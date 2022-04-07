@@ -967,6 +967,8 @@ static int h264_decode_frame(AVCodecContext *avctx, void *data,
     h->flags = avctx->flags;
     h->setup_finished = 0;
     h->nb_slice_ctx_queued = 0;
+    memset(h->intra_modes, 1 << 7, sizeof(h->intra_modes));
+    pict->intra_modes = h->intra_modes;
 
     ff_h264_unref_picture(h, &h->last_pic_for_ec);
 

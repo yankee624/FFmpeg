@@ -666,6 +666,7 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
             for (i = 0; i < 16; i++) {
                 uint8_t *const ptr = dest_y + block_offset[i];
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
+                // printf("intra4x4 %d\n", dir);
 
                 if (transform_bypass && h->ps.sps->profile_idc == 244 && dir <= 1) {
                     h->hpc.pred4x4_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
@@ -701,6 +702,7 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
             }
         }
     } else {
+        // printf("intra16x16 %d\n", sl->intra16x16_pred_mode);
         h->hpc.pred16x16[sl->intra16x16_pred_mode](dest_y, linesize);
         if (sl->non_zero_count_cache[scan8[LUMA_DC_BLOCK_INDEX + p]]) {
             if (!transform_bypass)
@@ -812,6 +814,8 @@ void ff_h264_hl_decode_mb(const H264Context *h, H264SliceContext *sl)
         hl_decode_mb_complex(h, sl);
     } else if (h->pixel_shift) {
         hl_decode_mb_simple_16(h, sl);
-    } else
+    } else {
         hl_decode_mb_simple_8(h, sl);
+        // printf("mb %d\n", sl->mb_xy);
+    }
 }

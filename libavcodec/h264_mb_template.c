@@ -151,7 +151,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
         }
     } else {
         if (IS_INTRA(mb_type)) {
-            int target_mb = sl->mb_y * 120 + sl->mb_x;
+            int target_mb = sl->mb_y * h->mb_width + sl->mb_x;
             h->intra_modes[target_mb] = 0;
             if (IS_INTRA4x4(mb_type)) {
                 for (int i = 0; i < 16; i++) {

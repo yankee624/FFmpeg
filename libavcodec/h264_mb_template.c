@@ -151,8 +151,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
         }
     } else {
         if (IS_INTRA(mb_type)) {
-            int target_mb = sl->mb_y * h->mb_width + sl->mb_x;
-            h->intra_modes[target_mb] = 0;
+            h->intra_modes[sl->mb_xy] = 0;
             if (IS_INTRA4x4(mb_type)) {
                 for (int i = 0; i < 16; i++) {
                     if (sl->intra4x4_pred_mode_cache[scan8[i]] >= 12) {
@@ -166,11 +165,11 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                     (sl->intra4x4_pred_mode_cache[scan8[4]] != 1 && sl->intra4x4_pred_mode_cache[scan8[4]] != 8 && sl->intra4x4_pred_mode_cache[scan8[4]] != 9 && sl->intra4x4_pred_mode_cache[scan8[4]] != 11) ||
                     (sl->intra4x4_pred_mode_cache[scan8[5]] != 1 && sl->intra4x4_pred_mode_cache[scan8[5]] != 8 && sl->intra4x4_pred_mode_cache[scan8[5]] != 9 && sl->intra4x4_pred_mode_cache[scan8[5]] != 11)
                 ) {
-                    h->intra_modes[target_mb] |= 1;
+                    h->intra_modes[sl->mb_xy] |= 1;
                 }
                 // if 5 top-right (3, 7)
                 if (sl->intra4x4_pred_mode_cache[scan8[5]] == 3 || sl->intra4x4_pred_mode_cache[scan8[5]] == 7) {
-                    h->intra_modes[target_mb] |= 4;
+                    h->intra_modes[sl->mb_xy] |= 4;
                 }
                 // if 0 2 8 10 left (1, 2, 4, 5, 6, 8, 9)
                 if (
@@ -179,7 +178,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                     (sl->intra4x4_pred_mode_cache[scan8[8]] != 0 && sl->intra4x4_pred_mode_cache[scan8[8]] != 3 && sl->intra4x4_pred_mode_cache[scan8[8]] != 7 && sl->intra4x4_pred_mode_cache[scan8[8]] != 10 && sl->intra4x4_pred_mode_cache[scan8[8]] != 11) ||
                     (sl->intra4x4_pred_mode_cache[scan8[10]] != 0 && sl->intra4x4_pred_mode_cache[scan8[10]] != 3 && sl->intra4x4_pred_mode_cache[scan8[10]] != 7 && sl->intra4x4_pred_mode_cache[scan8[10]] != 10 && sl->intra4x4_pred_mode_cache[scan8[10]] != 11)
                 ) {
-                    h->intra_modes[target_mb] |= 2;
+                    h->intra_modes[sl->mb_xy] |= 2;
                 }
             } else if (IS_INTRA16x16(mb_type)) {
                 if (sl->intra16x16_pred_mode >= 7) {
@@ -187,11 +186,11 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                 }
                 // top (0, 2, 3, 5)
                 else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 2 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 5) {
-                    h->intra_modes[target_mb] |= 1;
+                    h->intra_modes[sl->mb_xy] |= 1;
                 }
                 // left (0, 1, 3, 4)
                 else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 1 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 4) {
-                    h->intra_modes[target_mb] |= 2;
+                    h->intra_modes[sl->mb_xy] |= 2;
                 }
             }
 

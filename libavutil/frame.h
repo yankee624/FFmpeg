@@ -683,6 +683,8 @@ typedef struct AVFrame {
     AVBufferRef *private_ref;
 
     uint8_t *intra_modes;
+    uint16_t *slice_table;      ///< slice_table_base + 2*mb_stride + 1
+
 } AVFrame;
 
 

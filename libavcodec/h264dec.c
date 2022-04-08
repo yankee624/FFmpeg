@@ -1054,6 +1054,8 @@ static int h264_decode_frame(AVCodecContext *avctx, void *data,
 
     ff_h264_unref_picture(h, &h->last_pic_for_ec);
 
+    pict->slice_table = h->slice_table;
+
     return get_consumed_bytes(buf_index, buf_size);
 }
 

@@ -523,9 +523,6 @@ static int decode_simple_receive_frame(AVCodecContext *avctx, AVFrame *frame)
 {
     int ret;
     int64_t discarded_samples = 0;
-    
-    avctx->mb_ranges_pos = 0;
-    memset(avctx->mb_ranges, 0, sizeof(avctx->mb_ranges));
 
     while (!frame->buf[0]) {
         if (discarded_samples > avctx->max_samples)

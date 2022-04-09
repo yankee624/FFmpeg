@@ -2593,9 +2593,6 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
     int orig_deblock = sl->deblocking_filter;
     int ret;
 
-    avctx->mb_ranges[avctx->mb_ranges_pos++] = sl->first_mb_addr;
-
-
     sl->linesize   = h->cur_pic_ptr->f->linesize[0];
     sl->uvlinesize = h->cur_pic_ptr->f->linesize[1];
 
@@ -2792,7 +2789,6 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
 
 finish:
     sl->deblocking_filter = orig_deblock;
-    avctx->mb_ranges[avctx->mb_ranges_pos++] = sl->mb_x + sl->mb_y * h->mb_width;
     return 0;
 }
 

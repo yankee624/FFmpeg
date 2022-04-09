@@ -2024,9 +2024,6 @@ typedef struct AVCodecContext {
      * - decoding: unused
      */
     int (*get_encode_buffer)(struct AVCodecContext *s, AVPacket *pkt, int flags);
-
-    int mb_ranges[500];
-    int mb_ranges_pos;
 } AVCodecContext;
 
 struct MpegEncContext;

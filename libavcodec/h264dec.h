@@ -561,6 +561,8 @@ typedef struct H264Context {
 
     uint8_t intra_modes[(120+1)*68];
     // from: 0b0 (nothing) / 0b1 (top) / 0b10 (top-right) / 0b100 (left)
+
+    uint16_t residual_sums[(120+1)*68];
 } H264Context;
 
 extern const uint16_t ff_h264_mb_sizes[4];

@@ -699,6 +699,8 @@ typedef struct AVFrame {
     uint8_t *intra_modes;
     uint16_t *slice_table;      ///< slice_table_base + 2*mb_stride + 1
 
+    uint16_t *residual_sums;
+
 } AVFrame;
 
 #if FF_API_FRAME_GET_SET

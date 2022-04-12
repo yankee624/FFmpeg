@@ -610,7 +610,7 @@ static av_always_inline void dctcoef_set(int16_t *mb, int high_bit_depth,
         AV_WN16A(mb + index, value);
 }
 
-static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
+static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                                                        H264SliceContext *sl,
                                                        int mb_type, int simple,
                                                        int transform_bypass,
@@ -623,9 +623,11 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
     void (*idct_dc_add)(uint8_t *dst, int16_t *block, int stride);
     int i;
     int qscale = p == 0 ? sl->qscale : sl->chroma_qp[p - 1];
+    uint16_t residual_sum = 0;
     block_offset += 16 * p;
     if (IS_INTRA4x4(mb_type)) {
         if (IS_8x8DCT(mb_type)) {
+            // doesn't seem to reach here
             if (transform_bypass) {
                 idct_dc_add =
                 idct_add    = h->h264dsp.h264_add_pixels8_clear;
@@ -663,12 +665,15 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
                 idct_dc_add = h->h264dsp.h264_idct_dc_add;
                 idct_add    = h->h264dsp.h264_idct_add;
             }
+
+
             for (i = 0; i < 16; i++) {
                 uint8_t *const ptr = dest_y + block_offset[i];
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
                 // printf("intra4x4 %d\n", dir);
 
                 if (transform_bypass && h->ps.sps->profile_idc == 244 && dir <= 1) {
+                    // doesn't seem to reach here
                     h->hpc.pred4x4_add[dir](ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                 } else {
                     uint8_t *topright;
@@ -692,12 +697,29 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
 
                     h->hpc.pred4x4[dir](ptr, topright, linesize);
                     nnz = sl->non_zero_count_cache[scan8[i + p * 16]];
+
+                    uint8_t before[16];
+                    for (int h = 0; h < 4; h++) {
+                        before[h*4] = ptr[h*linesize];
+                        before[h*4+1] = ptr[h*linesize+1];
+                        before[h*4+2] = ptr[h*linesize+2];
+                        before[h*4+3] = ptr[h*linesize+3];
+                    }
                     if (nnz) {
                         if (nnz == 1 && dctcoef_get(sl->mb, pixel_shift, i * 16 + p * 256))
                             idct_dc_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                         else
                             idct_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
+                    } else {
+                        // sometimes reach here
                     }
+                    for (int h = 0; h < 4; h++) {
+                        residual_sum += abs(before[h*4] - ptr[h*linesize]);
+                        residual_sum += abs(before[h*4+1] - ptr[h*linesize+1]);
+                        residual_sum += abs(before[h*4+2] - ptr[h*linesize+2]);
+                        residual_sum += abs(before[h*4+3] - ptr[h*linesize+3]);
+                    }
+                    h->residual_sums[sl->mb_xy] += residual_sum;
                 }
             }
         }
@@ -726,7 +748,7 @@ static av_always_inline void hl_decode_mb_predict_luma(const H264Context *h,
     }
 }
 
-static av_always_inline void hl_decode_mb_idct_luma(const H264Context *h, H264SliceContext *sl,
+static av_always_inline void hl_decode_mb_idct_luma(H264Context *h, H264SliceContext *sl,
                                                     int mb_type, int simple,
                                                     int transform_bypass,
                                                     int pixel_shift,
@@ -737,9 +759,19 @@ static av_always_inline void hl_decode_mb_idct_luma(const H264Context *h, H264Sl
     void (*idct_add)(uint8_t *dst, int16_t *block, int stride);
     int i;
     block_offset += 16 * p;
+
     if (!IS_INTRA4x4(mb_type)) {
+        uint16_t residual_sum = 0;
+        uint8_t before[16*16];
+        for (int h = 0; h < 16; h++) {
+            for (int w = 0; w < 16; w++) {
+                before[h*16+w] = dest_y[h*linesize + w];
+            }
+        }
+
         if (IS_INTRA16x16(mb_type)) {
             if (transform_bypass) {
+                // doesn't seem to reach here
                 if (h->ps.sps->profile_idc == 244 &&
                     (sl->intra16x16_pred_mode == VERT_PRED8x8 ||
                      sl->intra16x16_pred_mode == HOR_PRED8x8)) {
@@ -754,7 +786,7 @@ static av_always_inline void hl_decode_mb_idct_luma(const H264Context *h, H264Sl
                                                               sl->mb + (i * 16 + p * 256 << pixel_shift),
                                                               linesize);
                 }
-            } else {
+            } else {                    
                 h->h264dsp.h264_idct_add16intra(dest_y, block_offset,
                                                 sl->mb + (p * 256 << pixel_shift),
                                                 linesize,
@@ -762,6 +794,7 @@ static av_always_inline void hl_decode_mb_idct_luma(const H264Context *h, H264Sl
             }
         } else if (sl->cbp & 15) {
             if (transform_bypass) {
+                // doesn't seem to reach here
                 const int di = IS_8x8DCT(mb_type) ? 4 : 1;
                 idct_add = IS_8x8DCT(mb_type) ? h->h264dsp.h264_add_pixels8_clear
                     : h->h264dsp.h264_add_pixels4_clear;
@@ -783,6 +816,13 @@ static av_always_inline void hl_decode_mb_idct_luma(const H264Context *h, H264Sl
                                                sl->non_zero_count_cache + p * 5 * 8);
             }
         }
+
+        for (int h = 0; h < 16; h++) {
+            for (int w = 0; w < 16; w++) {
+                residual_sum += abs(before[h*16+w] - dest_y[h*linesize + w]);
+            }
+        }
+        h->residual_sums[sl->mb_xy] += residual_sum;
     }
 }
 
@@ -815,7 +855,7 @@ void ff_h264_hl_decode_mb(const H264Context *h, H264SliceContext *sl)
     } else if (h->pixel_shift) {
         hl_decode_mb_simple_16(h, sl);
     } else {
+        // printf("mb %d %s\n", sl->mb_xy, IS_INTER(mb_type) ? "inter" : "intra");
         hl_decode_mb_simple_8(h, sl);
-        // printf("mb %d\n", sl->mb_xy);
     }
 }

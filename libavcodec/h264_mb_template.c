@@ -96,6 +96,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
     }
 
     if (!SIMPLE && IS_INTRA_PCM(mb_type)) {
+        // doesn't seem to reach here
         const int bit_depth = h->ps.sps->bit_depth_luma;
         if (PIXEL_SHIFT) {
             int j;
@@ -212,6 +213,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                                uvlinesize, 0, 0, SIMPLE, PIXEL_SHIFT);
         } else {
             if (chroma422) {
+                // doesn't seem to reach here
                 FUNC(hl_motion_422)(h, sl, dest_y, dest_cb, dest_cr,
                               h->h264qpel.put_h264_qpel_pixels_tab,
                               h->h264chroma.put_h264_chroma_pixels_tab,
@@ -282,9 +284,34 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                 if (sl->non_zero_count_cache[scan8[CHROMA_DC_BLOCK_INDEX + 1]])
                     h->h264dsp.h264_chroma_dc_dequant_idct(sl->mb + (16 * 16 * 2 << PIXEL_SHIFT),
                                                            h->ps.pps->dequant4_coeff[IS_INTRA(mb_type) ? 2 : 5][qp[1]][0]);
+                
+                uint16_t residual_sum = 0;
+                uint8_t cb_before[8*8];
+                uint8_t cr_before[8*8];
+                for (int h = 0; h < 8; h++) {
+                    for (int w = 0; w < 8; w++) {
+                        cb_before[h*8+w] = dest[0][h*uvlinesize + w];
+                    }
+                }
+                for (int h = 0; h < 8; h++) {
+                    for (int w = 0; w < 8; w++) {
+                        cr_before[h*8+w] = dest[1][h*uvlinesize + w];
+                    }
+                }
                 h->h264dsp.h264_idct_add8(dest, block_offset,
                                           sl->mb, uvlinesize,
                                           sl->non_zero_count_cache);
+                for (int h = 0; h < 8; h++) {
+                    for (int w = 0; w < 8; w++) {
+                        residual_sum += abs(cb_before[h*8+w] - dest[0][h*uvlinesize + w]);
+                    }
+                }
+                for (int h = 0; h < 8; h++) {
+                    for (int w = 0; w < 8; w++) {
+                        residual_sum += abs(cr_before[h*8+w] - dest[1][h*uvlinesize + w]);
+                    }
+                }
+                h->residual_sums[sl->mb_xy] += residual_sum;
             }
         }
     }

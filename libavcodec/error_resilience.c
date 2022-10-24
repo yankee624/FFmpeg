@@ -36,6 +36,7 @@
 #include "rectangle.h"
 #include "thread.h"
 #include "version.h"
+#include <time.h>
 
 /**
  * @param stride the number of MVs to get to the next row
@@ -131,7 +132,7 @@ static void filter181(int16_t *data, int width, int height, ptrdiff_t stride)
 }
 
 /**
- * guess the dc of blocks which do not have an undamaged dc
+ * guess the dc of blocks which do not have an undamaged dc (only intra)
  * @param w     width in 8 pixel blocks
  * @param h     height in 8 pixel blocks
  */
@@ -147,6 +148,7 @@ static void guess_dc(ERContext *s, int16_t *dc, int w,
         goto fail;
     }
 
+    // From each 4 directions, save the dc value of closest correct block
     for(b_y=0; b_y<h; b_y++){
         int color= 1024;
         int distance= -1;
@@ -204,6 +206,7 @@ static void guess_dc(ERContext *s, int16_t *dc, int w,
         }
     }
 
+    // Weighted sum of 4 directions
     for (b_y = 0; b_y < h; b_y++) {
         for (b_x = 0; b_x < w; b_x++) {
             int mb_index, error, j;
@@ -436,6 +439,8 @@ static void guess_mv(ERContext *s)
         }
     }
 
+    // When 'GUESS_MVS option is off' or 'too many blocks are lost', set mv to (0,0)
+    // Then why do we set s->cur_pic.motion_val in above for loop?
     if ((!(s->avctx->error_concealment&FF_EC_GUESS_MVS)) ||
         num_avail <= FFMAX(mb_width, mb_height) / 2) {
         for (mb_y = 0; mb_y < mb_height; mb_y++) {
@@ -457,6 +462,7 @@ static void guess_mv(ERContext *s)
         return;
     }
 
+    // Collect damaged blocks that are near undamaged blocks (Need undamaged blocks nearby for inter/extrapolation)
     blocklist_length = 0;
     for (mb_y = 0; mb_y < mb_height; mb_y++) {
         for (mb_x = 0; mb_x < mb_width; mb_x++) {
@@ -520,6 +526,7 @@ static void guess_mv(ERContext *s)
                 pred_count = 0;
                 mot_index  = (mb_x + mb_y * mot_stride) * mot_step;
 
+                /* left */
                 if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
                     mv_predictor[pred_count][0] =
                         s->cur_pic.motion_val[0][mot_index - mot_step][0];
@@ -529,6 +536,7 @@ static void guess_mv(ERContext *s)
                         s->cur_pic.ref_index[0][4 * (mb_xy - 1)];
                     pred_count++;
                 }
+                /* right */
                 if (mb_x + 1 < mb_width && fixed[mb_xy + 1] > 1) {
                     mv_predictor[pred_count][0] =
                         s->cur_pic.motion_val[0][mot_index + mot_step][0];
@@ -538,6 +546,7 @@ static void guess_mv(ERContext *s)
                         s->cur_pic.ref_index[0][4 * (mb_xy + 1)];
                     pred_count++;
                 }
+                /* up */
                 if (mb_y > 0 && fixed[mb_xy - mb_stride] > 1) {
                     mv_predictor[pred_count][0] =
                         s->cur_pic.motion_val[0][mot_index - mot_stride * mot_step][0];
@@ -547,6 +556,7 @@ static void guess_mv(ERContext *s)
                         s->cur_pic.ref_index[0][4 * (mb_xy - s->mb_stride)];
                     pred_count++;
                 }
+                /* down */
                 if (mb_y + 1<mb_height && fixed[mb_xy + mb_stride] > 1) {
                     mv_predictor[pred_count][0] =
                         s->cur_pic.motion_val[0][mot_index + mot_stride * mot_step][0];
@@ -559,6 +569,8 @@ static void guess_mv(ERContext *s)
                 if (pred_count == 0)
                     continue;
 
+                int pred_idx_mean = -1;
+                int pred_idx_med = -1;
                 if (pred_count > 1) {
                     int sum_x = 0, sum_y = 0, sum_r = 0;
                     int max_x, max_y, min_x, min_y, max_r, min_r;
@@ -600,6 +612,8 @@ static void guess_mv(ERContext *s)
                         mv_predictor[pred_count + 1][1] /= 2;
                                  ref[pred_count + 1]    /= 2;
                     }
+                    pred_idx_mean = pred_count;
+                    pred_idx_med = pred_count+1;
                     pred_count += 2;
                 }
 
@@ -608,18 +622,21 @@ skip_mean_and_median:
                 mv_predictor[pred_count][0] =
                 mv_predictor[pred_count][1] =
                          ref[pred_count]    = 0;
+                int pred_idx_zero = pred_count;
                 pred_count++;
 
                 prev_x   = s->cur_pic.motion_val[0][mot_index][0];
                 prev_y   = s->cur_pic.motion_val[0][mot_index][1];
                 prev_ref = s->cur_pic.ref_index[0][4 * mb_xy];
 
-                /* last MV */
+                /* colocated MV */
                 mv_predictor[pred_count][0] = prev_x;
                 mv_predictor[pred_count][1] = prev_y;
                          ref[pred_count]    = prev_ref;
+                int pred_idx_colocated = pred_count;
                 pred_count++;
-
+                
+                // Find which predictor (among left, right, up, down, mean, median, zero, last) has best score
                 best_pred = 0;
                 best_score = 256 * 256 * 256 * 64;
                 for (j = 0; j < pred_count; j++) {
@@ -639,6 +656,7 @@ skip_mean_and_median:
 
                     s->decode_mb(s->opaque, ref[j], MV_DIR_FORWARD,
                                  MV_TYPE_16X16, &s->mv, mb_x, mb_y, 0, 0);
+
 
                     if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
                         int k;
@@ -690,7 +708,8 @@ skip_mean_and_median:
                     fixed[mb_xy] = MV_UNCHANGED;
             }
         }
-
+                
+        // Continue until there's nothing to change
         if (none_left)
             return;
 
@@ -1235,7 +1254,7 @@ void ff_er_frame_end(ERContext *s)
     /* the filters below manipulate raw image, skip them */
     if (CONFIG_XVMC && s->avctx->hwaccel && s->avctx->hwaccel->decode_mb)
         goto ec_clean;
-    /* fill DC for inter blocks */
+    /* fill DC for inter blocks */ // Do we use this??? (Isn't it overwritten by guess_dc below?)
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
             int dc, dcu, dcv, y, n;

@@ -89,8 +89,11 @@ typedef struct ERContext {
     void *opaque;
 } ERContext;
 
+// called from h264_slice.c (h264_frame_start())
 void ff_er_frame_start(ERContext *s);
+// called from h264dec.c (decode_nal_units())
 void ff_er_frame_end(ERContext *s);
+// called from both h264_slice.c
 void ff_er_add_slice(ERContext *s, int startx, int starty, int endx, int endy,
                      int status);
 

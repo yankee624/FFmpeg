@@ -237,6 +237,9 @@ fail:
  * @param w     width in 8 pixel blocks
  * @param h     height in 8 pixel blocks
  */
+
+ ////  h_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
+     //                  s->mb_height * 2, linesize[0], 1);
 static void h_block_filter(ERContext *s, uint8_t *dst, int w,
                            int h, ptrdiff_t stride, int is_luma)
 {
@@ -784,6 +787,8 @@ static int is_intra_more_likely(ERContext *s)
     return is_intra_likely > 0;
 }
 
+
+// initialize error_status_table
 void ff_er_frame_start(ERContext *s)
 {
     if (!s->avctx->error_concealment)
@@ -794,6 +799,10 @@ void ff_er_frame_start(ERContext *s)
         s->mecc_inited = 1;
     }
 
+    // ER_MB_ERROR == (ER_AC_ERROR|ER_DC_ERROR|ER_MV_ERROR) == (2 | 4 | 8)  == 0000 1110
+    // VP_START  == 1 == 0000 0001
+    // ER_MB_END == (ER_AC_END|ER_DC_END|ER_MV_END) == (16 | 32 | 64) == 0111 000
+    // ER_MB_ERROR | VP_START | ER_MB_END = 0111 1111
     memset(s->error_status_table, ER_MB_ERROR | VP_START | ER_MB_END,
            s->mb_stride * s->mb_height * sizeof(uint8_t));
     atomic_init(&s->error_count, 3 * s->mb_num);
@@ -887,6 +896,8 @@ void ff_er_add_slice(ERContext *s, int startx, int starty,
     }
 }
 
+
+// this function called, performs error concealment
 void ff_er_frame_end(ERContext *s)
 {
     int *linesize = NULL;
@@ -923,6 +934,7 @@ void ff_er_frame_end(ERContext *s)
         }
     }
 
+    // if format/size of last picture is not the same as current picture
     if (s->last_pic.f) {
         if (s->last_pic.f->width  != s->cur_pic.f->width  ||
             s->last_pic.f->height != s->cur_pic.f->height ||
@@ -931,6 +943,7 @@ void ff_er_frame_end(ERContext *s)
             memset(&s->last_pic, 0, sizeof(s->last_pic));
         }
     }
+    // if format/size of next picture is not the same as current picture
     if (s->next_pic.f) {
         if (s->next_pic.f->width  != s->cur_pic.f->width  ||
             s->next_pic.f->height != s->cur_pic.f->height ||
@@ -982,6 +995,7 @@ void ff_er_frame_end(ERContext *s)
             const int mb_xy = s->mb_index2xy[i];
             int error       = s->error_status_table[mb_xy];
 
+            // if error == 2, 4, 8, 16, 32, 64
             if (error & (1 << error_type))
                 end_ok = 1;
             if (error & (8 << error_type))
@@ -1138,6 +1152,7 @@ void ff_er_frame_end(ERContext *s)
                 s->cur_pic.mb_type[mb_xy] = MB_TYPE_INTRA4x4;
         }
 
+
     /* handle inter blocks with damaged AC */
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
@@ -1270,7 +1285,7 @@ void ff_er_frame_end(ERContext *s)
             s->dc_val[2][mb_x + mb_y * s->mb_stride] = (dcv + 4) >> 3;
         }
     }
-#if 1
+#if 0
     /* guess DC for damaged blocks */
     guess_dc(s, s->dc_val[0], s->mb_width*2, s->mb_height*2, s->b8_stride, 1);
     guess_dc(s, s->dc_val[1], s->mb_width  , s->mb_height  , s->mb_stride, 0);
@@ -1306,26 +1321,26 @@ void ff_er_frame_end(ERContext *s)
     }
 #endif
 
-    if (s->avctx->error_concealment & FF_EC_DEBLOCK) {
-        /* filter horizontal block boundaries */
-        h_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
-                       s->mb_height * 2, linesize[0], 1);
-
-        /* filter vertical block boundaries */
-        v_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
-                       s->mb_height * 2, linesize[0], 1);
-
-        if (s->cur_pic.f->data[2]) {
-            h_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
-                        s->mb_height, linesize[1], 0);
-            h_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
-                        s->mb_height, linesize[2], 0);
-            v_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
-                        s->mb_height, linesize[1], 0);
-            v_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
-                        s->mb_height, linesize[2], 0);
-        }
-    }
+//    if (s->avctx->error_concealment & FF_EC_DEBLOCK) {
+//        /* filter horizontal block boundaries */
+//        h_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
+//                       s->mb_height * 2, linesize[0], 1);
+//
+//        /* filter vertical block boundaries */
+//        v_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
+//                       s->mb_height * 2, linesize[0], 1);
+//
+//        if (s->cur_pic.f->data[2]) {
+//            h_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
+//                        s->mb_height, linesize[1], 0);
+//            h_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
+//                        s->mb_height, linesize[2], 0);
+//            v_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
+//                        s->mb_height, linesize[1], 0);
+//            v_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
+//                        s->mb_height, linesize[2], 0);
+//        }
+//    }
 
     /* clean a few tables */
     for (i = 0; i < s->mb_num; i++) {

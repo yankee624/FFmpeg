@@ -558,33 +558,50 @@ extern const uint16_t ff_h264_mb_sizes[4];
 /**
  * Reconstruct bitstream slice_type.
  */
+// impl. at h264_slice.c
+// used in dxva2_h264.c, vaapi_h264.c
 int ff_h264_get_slice_type(const H264SliceContext *sl);
 
 /**
  * Allocate tables.
  * needs width/height
  */
+ // impl. at h264dec.c
+ // used in h264_slice.c
 int ff_h264_alloc_tables(H264Context *h);
-
+// impl. at h264_refs.c
+// used in h264_slice.c
 int ff_h264_decode_ref_pic_list_reordering(H264SliceContext *sl, void *logctx);
+// impl. at h264_refs.c
+// used in h264_slice.c
 int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl);
+// impl. at h264_refs.c
+// used in h264dec.c
 void ff_h264_remove_all_refs(H264Context *h);
 
 /**
  * Execute the reference picture marking (memory management control operations).
  */
+// impl. at h264_refs.c
+// used in h264_picture.c, h264_slice.c
 int ff_h264_execute_ref_pic_marking(H264Context *h);
-
+// impl. at h264_refs.c
+// used in h264_slice.c
 int ff_h264_decode_ref_pic_marking(H264SliceContext *sl, GetBitContext *gb,
                                    const H2645NAL *nal, void *logctx);
-
+// impl. at h264_mb.c
+// used in h264_slice.c, h264dec.c
 void ff_h264_hl_decode_mb(const H264Context *h, H264SliceContext *sl);
+// impl. at h264_cavlc.c
+// used in h264dec.c
 void ff_h264_decode_init_vlc(void);
 
 /**
  * Decode a macroblock
  * @return 0 if OK, ER_AC_ERROR / ER_DC_ERROR / ER_MV_ERROR on error
  */
+ // impl. in h264_cavlc.c
+ // used in h264_slice.c
 int ff_h264_decode_mb_cavlc(const H264Context *h, H264SliceContext *sl);
 
 /**
@@ -778,14 +795,23 @@ static av_always_inline int get_dct8x8_allowed(const H264Context *h, H264SliceCo
                   0x0001000100010001ULL));
 }
 
+// impl. at h264_picture.c
+// used in h264_slice.c, h264dec.c
 int ff_h264_field_end(H264Context *h, H264SliceContext *sl, int in_setup);
-
+// impl. at h264_picture.c
+// used in h264_refs.c, h264_slice.c
 int ff_h264_ref_picture(H264Context *h, H264Picture *dst, H264Picture *src);
+// impl. at h264_picture.c
+// used in h264_slice.c
 int ff_h264_replace_picture(H264Context *h, H264Picture *dst, const H264Picture *src);
+// impl. at h264_picture.c
+// used in h264_picture.c, h264_refs.c, h264_slice.c, h264dec.c
 void ff_h264_unref_picture(H264Context *h, H264Picture *pic);
-
+// impl. at h264dec.c
+// used in h264_slice.c
 int ff_h264_slice_context_init(H264Context *h, H264SliceContext *sl);
-
+// impl. at h264dec.c
+// used in dxva2_h264.c, h264_slice.c, vaapi_h264.c, vdpau_h264.c
 void ff_h264_draw_horiz_band(const H264Context *h, H264SliceContext *sl, int y, int height);
 
 /**
@@ -794,6 +820,8 @@ void ff_h264_draw_horiz_band(const H264Context *h, H264SliceContext *sl, int y, 
  * Parse the slice header, starting a new field/frame if necessary. If any
  * slices are queued for the previous field, they are decoded.
  */
+// impl. at h264_slice.c
+// used in h264dec.c
 int ff_h264_queue_decode_slice(H264Context *h, const H2645NAL *nal);
 int ff_h264_execute_decode_slices(H264Context *h);
 int ff_h264_update_thread_context(AVCodecContext *dst,

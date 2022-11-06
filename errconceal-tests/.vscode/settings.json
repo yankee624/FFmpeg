@@ -1,0 +1,13 @@
+{
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/workspace/22-LossAware/FFmpeg/errconceal-tests",
+            "binaryPath": "/workspace/22-LossAware/FFmpeg/errconceal-tests/decode_video_test",
+            "binaryArgs": ["../../loss-aware-inference/video_loss/build/enc-kitti-mot_training_image_02_0000-slice1200-ec3_loss.h264", "output/test"]
+        },
+        {
+            "name": "Default",
+            "makeArgs": []
+        },
+    ]
+}

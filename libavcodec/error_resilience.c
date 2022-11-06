@@ -131,12 +131,26 @@ static void filter181(int16_t *data, int width, int height, ptrdiff_t stride)
 
 /**
  * guess the dc of blocks which do not have an undamaged dc
+ * this version uses edge information 
+ * @param w     width in 8 pixel blocks
+ * @param h     height in 8 pixel blocks
+*/
+static void guess_dc_edge(ERContext *s, int16_t *dc, int w, int h, ptrdiff_t stride, int is_luma)
+{
+    int16_t (*col)[2] = av_malloc_array(stride, h*sizeof(int16_t)*4);
+
+}
+
+
+/**
+ * guess the dc of blocks which do not have an undamaged dc
  * @param w     width in 8 pixel blocks
  * @param h     height in 8 pixel blocks
  */
 static void guess_dc(ERContext *s, int16_t *dc, int w,
                      int h, ptrdiff_t stride, int is_luma)
 {
+
     int b_x, b_y;
     int16_t  (*col )[4] = av_malloc_array(stride, h*sizeof( int16_t)*4);
     uint32_t (*dist)[4] = av_malloc_array(stride, h*sizeof(uint32_t)*4);
@@ -1128,8 +1142,9 @@ void ff_er_frame_end(ERContext *s)
 
     s->cur_pic.f->decode_error_flags |= FF_DECODE_ERROR_CONCEALMENT_ACTIVE;
 
-    is_intra_likely = is_intra_more_likely(s);
-
+    //kjlee testing intra only
+    //is_intra_likely = is_intra_more_likely(s);
+    is_intra_likely = 1;
     /* set unknown mb-type to most likely */
     for (i = 0; i < s->mb_num; i++) {
         const int mb_xy = s->mb_index2xy[i];
@@ -1187,6 +1202,7 @@ void ff_er_frame_end(ERContext *s)
 
             s->decode_mb(s->opaque, 0 /* FIXME H.264 partitioned slices need this set */,
                          mv_dir, mv_type, &s->mv, mb_x, mb_y, 0, 0);
+
         }
     }
 
@@ -1253,7 +1269,6 @@ void ff_er_frame_end(ERContext *s)
                 continue;
             // if (error & ER_MV_ERROR)
             //     continue; // inter data damaged FIXME is this good?
-
             dest_y  = s->cur_pic.f->data[0] + mb_x * 16 + mb_y * 16 * linesize[0];
             dest_cb = s->cur_pic.f->data[1] + mb_x *  8 + mb_y *  8 * linesize[1];
             dest_cr = s->cur_pic.f->data[2] + mb_x *  8 + mb_y *  8 * linesize[2];
@@ -1285,7 +1300,7 @@ void ff_er_frame_end(ERContext *s)
             s->dc_val[2][mb_x + mb_y * s->mb_stride] = (dcv + 4) >> 3;
         }
     }
-#if 0
+#if 1
     /* guess DC for damaged blocks */
     guess_dc(s, s->dc_val[0], s->mb_width*2, s->mb_height*2, s->b8_stride, 1);
     guess_dc(s, s->dc_val[1], s->mb_width  , s->mb_height  , s->mb_stride, 0);

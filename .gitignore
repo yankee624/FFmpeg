@@ -26,6 +26,8 @@
 *.ptx.c
 *.ptx.gz
 *_g
+*.ppm
+*.h264
 \#*
 .\#*
 /.config

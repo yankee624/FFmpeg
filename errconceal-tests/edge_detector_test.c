@@ -1,4 +1,3 @@
-
 /**
  * @file
  * sobel edge detector test code
@@ -23,7 +22,7 @@ typedef struct {
 	int **imageData;
 	int **gx;
 	int **gy;
-} edge;
+} Edge;
 static struct SwsContext *sws_ctx = NULL;
 
 static void pgm_save(uint8_t *buf, int wrap, int xsize, int ysize,
@@ -71,7 +70,7 @@ void rgbframe_to_grey(AVFrame* rgb, uint8_t* out)
 
 }
 
-int convolution(edge* image, int kernel[3][3], int row, int col) {
+int convolution(Edge* image, int kernel[3][3], int row, int col) {
 	int i, j, sum = 0;
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
@@ -82,7 +81,7 @@ int convolution(edge* image, int kernel[3][3], int row, int col) {
 }
 
 
-void sobel_edge_detector(uint8_t* data, edge* output)
+void sobel_edge_detector(uint8_t* data, Edge* output)
 {
     int i, j, gx, gy;
 	int mx[3][3] = {
@@ -110,7 +109,7 @@ void sobel_edge_detector(uint8_t* data, edge* output)
 
 void edge_save(uint8_t* data, int width, int height, char *filename)
 {
-    edge out;
+    Edge out;
     out.width = width;
     out.height = height;
     out.imageData = (int**) calloc(out.height, sizeof(int*));
@@ -144,6 +143,16 @@ void edge_save(uint8_t* data, int width, int height, char *filename)
         }
     }
     pgm_save(edge_data, width, width, height, filename);
+
+    for(int i = 0 ; i < out.height; i++){
+            free(out.imageData[i]);
+            free(out.gx[i]);
+            free(out.gy[i]);
+    }
+    free(out.imageData);
+    free(out.gx);
+    free(out.gy);
+
    
 }
 

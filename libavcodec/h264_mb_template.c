@@ -18,7 +18,6 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-
 #undef FUNC
 #undef PIXEL_SHIFT
 
@@ -38,6 +37,8 @@
 #define CHROMA_IDC 2
 #include "h264_mc_template.c"
 
+// kjlee: hl_decode_mb_simple_8(h, sl) is used 
+// simple, pixel_shift (8 >> 4)
 static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContext *sl)
 {
     const int mb_x    = sl->mb_x;
@@ -187,12 +188,15 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
             }
         }
 
+        
+
         hl_decode_mb_idct_luma(h, sl, mb_type, SIMPLE, transform_bypass,
                                PIXEL_SHIFT, block_offset, linesize, dest_y, 0);
 
         if ((SIMPLE || !CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) &&
             (sl->cbp & 0x30)) {
             uint8_t *dest[2] = { dest_cb, dest_cr };
+            // kjlee: transform_bypass = false
             if (transform_bypass) {
                 if (IS_INTRA(mb_type) && h->ps.sps->profile_idc == 244 &&
                     (sl->chroma_pred_mode == VERT_PRED8x8 ||
@@ -275,7 +279,7 @@ static av_noinline void FUNC(hl_decode_mb_444)(const H264Context *h, H264SliceCo
 
     h->list_counts[mb_xy] = sl->list_count;
 
-    if (!SIMPLE && MB_FIELD(sl)) {
+    if (!SIMPLE && MB_FIELD(sl)) { 
         linesize     = sl->mb_linesize = sl->mb_uvlinesize = sl->linesize * 2;
         block_offset = &h->block_offset[48];
         if (mb_y & 1) // FIXME move out of this function?

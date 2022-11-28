@@ -2160,7 +2160,7 @@ decode_intra_mb:
 
         if(dct8x8_allowed)
             dct8x8_allowed = get_dct8x8_allowed(h, sl);
-
+        // kjlee: list_count == 2 for B frames, others list_count == 1
         for (list = 0; list < sl->list_count; list++) {
             for(i=0; i<4; i++){
                 sl->ref_cache[list][scan8[4 * i]] = sl->ref_cache[list][scan8[4 * i] + 1];

@@ -53,6 +53,8 @@ static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
     fclose(f);
 }
 
+
+
 void ppm_save(AVFrame *pframe, int width, int height, char *filename)
 {
     int y;

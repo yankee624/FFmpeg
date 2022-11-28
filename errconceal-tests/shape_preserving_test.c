@@ -17,10 +17,16 @@
 
 #define INBUF_SIZE 4096
 #define MB_SIZE 16
-#define MB_ERROR_WIDTH_START 49
-#define MB_ERROR_WIDTH_END 50
-#define MB_ERROR_HEIGHT_START 8
-#define MB_ERROR_HEIGHT_END 10
+//#define MB_ERROR_WIDTH_START 49
+//#define MB_ERROR_WIDTH_END 50
+//#define MB_ERROR_HEIGHT_START 8
+//#define MB_ERROR_HEIGHT_END 10
+
+#define MB_ERROR_WIDTH_START 44
+#define MB_ERROR_WIDTH_END 49
+#define MB_ERROR_HEIGHT_START 10
+#define MB_ERROR_HEIGHT_END 11
+
 
 #define LEFT 0
 #define RIGHT 1
@@ -179,10 +185,10 @@ void conceal_yuv_with_edge(AVFrame* yuv, Edge* data)
             yuv->data[2][i/2*yuv->linesize[2] + j/2] = round((dist_right * yuv->data[2][left_y/2*yuv->linesize[2] + left_x/2] + dist_left * yuv->data[2][right_y/2*yuv->linesize[2] + right_x/2]) / (dist_right + dist_left));
            // todo: move this to save both
            // this is for testing only
-           // yuv->data[0][i*yuv->linesize[0] + j] = 0;
-           // yuv->data[1][i/2*yuv->linesize[1] + j/2] = 0;
-           // yuv->data[2][i/2*yuv->linesize[2] + j/2] = 0;
-        
+            yuv->data[0][i*yuv->linesize[0] + j] = 0;
+            yuv->data[1][i/2*yuv->linesize[1] + j/2] = 0;
+            yuv->data[2][i/2*yuv->linesize[2] + j/2] = 0;
+
            
         }
     
@@ -636,7 +642,7 @@ int main(int argc, char **argv)
             }
                 
         }
-        if(cnt == 10) break;
+        if(cnt == 30) break;
     }
 
     /* flush the decoder */

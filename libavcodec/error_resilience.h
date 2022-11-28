@@ -48,6 +48,15 @@ typedef struct ERPicture {
 
     uint32_t *mb_type;
     int field_picture;
+
+    // kjlee: for edge detection
+    // per macroblock dominant magnitude and direction
+    float *mb_edge_mag;
+    float *mb_edge_dir;
+    // per pixel edge magnitude and direction 
+	float *edge_mag;
+    float *edge_dir;
+
 } ERPicture;
 
 typedef struct ERContext {

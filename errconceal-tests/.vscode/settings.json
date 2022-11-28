@@ -9,5 +9,8 @@
             "name": "Default",
             "makeArgs": []
         },
-    ]
+    ],
+    "files.associations": {
+        "imgutils.h": "c"
+    }
 }

@@ -328,7 +328,7 @@ int main(int argc, char **argv)
             }
                 
         }
-        if(cnt == 2) break;
+        if(cnt == 30) break;
     }
 
     /* flush the decoder */

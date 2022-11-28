@@ -58,6 +58,7 @@ static void set_mv_strides(ERContext *s, ptrdiff_t *mv_step, ptrdiff_t *stride)
 static void put_dc(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
                    uint8_t *dest_cr, int mb_x, int mb_y)
 {
+    printf("put dc\n");
     int *linesize = s->cur_pic.f->linesize;
     int dc, dcu, dcv, y, i;
     for (i = 0; i < 4; i++) {
@@ -137,10 +138,138 @@ static void filter181(int16_t *data, int width, int height, ptrdiff_t stride)
 */
 static void guess_dc_edge(ERContext *s, int16_t *dc, int w, int h, ptrdiff_t stride, int is_luma)
 {
-    int16_t (*col)[2] = av_malloc_array(stride, h*sizeof(int16_t)*4);
+    int16_t (*col)[2] = av_malloc_array(stride, h*sizeof(int16_t)*2);
+    uint32_t (*dist)[2] = av_malloc_array(stride, h*sizeof(uint32_t)*2);
+
+    if(!col || !dist){
+        av_log(s->avctx, AV_LOG_ERROR, "guess_dc_edge() is out of memory\n");
+        goto fail;
+    }
+
+fail:
+    av_freep(&col);
+    av_freep(&dist);
 
 }
 
+
+
+
+
+static int convolution(AVFrame *f, int kernel[3][3], int row, int col) {
+	int i, j, sum = 0;
+    int *linesize = f->linesize;
+
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 3; j++) {
+            sum += f->data[0][(i+row)*linesize[0]+j+col] * kernel[i][j];
+
+		}
+	}
+	return sum;
+}
+
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+static void edge_detection_mb(ERPicture p, int mb_x, int mb_y){
+    int width = p.f->width; int height = p.f->height;
+    
+    int start_x = max(16*mb_x, 1);
+    int end_x = min(16*(mb_x+1), width - 1);
+    int start_y = max(16*mb_y, 1);
+    int end_y = min(16*(mb_y+1), height - 1);
+
+    int my[3][3] = {
+		{-1, 0, 1},
+		{-2, 0, 2},
+		{-1, 0, 1}
+	};
+	int mx[3][3] = {
+		{-1, -2, -1},
+		{0, 0, 0},
+		{1, 2, 1}
+	};
+    int i, j, gx, gy;
+    for (i = start_y; i < end_y; i++) {
+		for (j = start_x; j < end_x; j++) {
+			gx = convolution(p.f, mx, i, j);
+			gy = convolution(p.f, my, i, j);
+            p.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
+            p.edge_dir[i * width + j] = atan2(gy, gx);
+		}
+	}
+
+}
+static void edge_detection_picture(ERPicture p)
+{
+    int width = p.f->width; int height = p.f->height;
+    p.edge_mag = av_malloc_array(width, height * sizeof(float));
+    p.edge_dir = av_malloc_array(width, height * sizeof(float));
+  
+    int i, j, gx, gy;
+	int my[3][3] = {
+		{-1, 0, 1},
+		{-2, 0, 2},
+		{-1, 0, 1}
+	};
+	int mx[3][3] = {
+		{-1, -2, -1},
+		{0, 0, 0},
+		{1, 2, 1}
+	};
+	
+	for (i = 1; i < p.f->height - 2; i++) {
+		for (j = 1; j < p.f->width - 2; j++) {
+			gx = convolution(p.f, mx, i, j);
+			gy = convolution(p.f, my, i, j);
+            p.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
+            p.edge_dir[i * width + j] = atan2(gy, gx);
+		}
+	}
+
+   
+}
+
+static void edge_detection(ERContext *s)
+{
+
+    edge_detection_picture(s->cur_pic); 
+    if(s->last_pic.f != NULL){
+        edge_detection_picture(s->last_pic);
+    }
+    av_free(s->cur_pic.edge_dir);
+    av_free(s->cur_pic.edge_mag);
+    if(s->last_pic.f != NULL){
+        av_free(s->last_pic.edge_dir);
+        av_free(s->last_pic.edge_mag);
+    }
+    /*s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+    s->cur_pic.edge_dir = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+    s->cur_pic.mb_edge_mag = av_malloc_array(s->mb_stride, s->mb_height*sizeof(float));
+    s->cur_pic.mb_edge_dir = av_malloc_array(s->mb_stride, s->mb_height*sizeof(float));
+
+
+    int i, j, gx, gy;
+	int my[3][3] = {
+		{-1, 0, 1},
+		{-2, 0, 2},
+		{-1, 0, 1}
+	};
+	int mx[3][3] = {
+		{-1, -2, -1},
+		{0, 0, 0},
+		{1, 2, 1}
+	};
+	
+	for (i = 1; i < s->cur_pic.f->height - 2; i++) {
+		for (j = 1; j < s->cur_pic.f->width - 2; j++) {
+			gx = convolution(s->cur_pic.f, mx, i, j);
+			gy = convolution(s->cur_pic.f, my, i, j);
+            s->cur_pic.edge_mag[i * s->cur_pic.f->width + j] = sqrt(gx*gx + gy*gy);
+            s->cur_pic.edge_dir[i * s->cur_pic.f->width + j] = atan2(gy, gx);
+		}
+	}*/
+}
 
 /**
  * guess the dc of blocks which do not have an undamaged dc
@@ -159,6 +288,7 @@ static void guess_dc(ERContext *s, int16_t *dc, int w,
         av_log(s->avctx, AV_LOG_ERROR, "guess_dc() is out of memory\n");
         goto fail;
     }
+
 
     for(b_y=0; b_y<h; b_y++){
         int color= 1024;
@@ -732,6 +862,383 @@ skip_mean_and_median:
     }
 }
 
+static void guess_mv_edge(ERContext *s)
+{
+
+
+
+    s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+    s->cur_pic.edge_dir = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+   
+    int (*blocklist)[2], (*next_blocklist)[2];
+    uint8_t *fixed;
+    const ptrdiff_t mb_stride = s->mb_stride;
+    const int mb_width  = s->mb_width;
+    int mb_height = s->mb_height;
+    int i, depth, num_avail;
+    int mb_x, mb_y;
+    ptrdiff_t mot_step, mot_stride;
+    int blocklist_length, next_blocklist_length;
+
+    if (s->last_pic.f && s->last_pic.f->data[0])
+        mb_height = FFMIN(mb_height, (s->last_pic.f->height+15)>>4);
+    if (s->next_pic.f && s->next_pic.f->data[0])
+        mb_height = FFMIN(mb_height, (s->next_pic.f->height+15)>>4);
+
+    blocklist      = (int (*)[2])s->er_temp_buffer;
+    next_blocklist = blocklist + s->mb_stride * s->mb_height;
+    fixed          = (uint8_t *)(next_blocklist + s->mb_stride * s->mb_height);
+
+    set_mv_strides(s, &mot_step, &mot_stride);
+
+    num_avail = 0;
+    if (s->last_pic.motion_val[0])
+        ff_thread_await_progress(s->last_pic.tf, mb_height-1, 0);
+
+    // kjlee: mark normal macroblocks (intra and no mv error) as frozen
+    // kjlee: for mb with mv error, if last pic mv is normal copy
+    for (i = 0; i < mb_width * mb_height; i++) {
+        const int mb_xy = s->mb_index2xy[i];
+        int f = 0;
+        int error = s->error_status_table[mb_xy];
+
+        if (IS_INTRA(s->cur_pic.mb_type[mb_xy]))
+            f = MV_FROZEN; // intra // FIXME check
+        if (!(error & ER_MV_ERROR))
+            f = MV_FROZEN; // inter with undamaged MV
+
+        fixed[mb_xy] = f;
+        if (f == MV_FROZEN)
+            num_avail++;
+        else if(s->last_pic.f->data[0] && s->last_pic.motion_val[0]){
+            const int mb_y= mb_xy / s->mb_stride;
+            const int mb_x= mb_xy % s->mb_stride;
+            const int mot_index= (mb_x + mb_y*mot_stride) * mot_step;
+            s->cur_pic.motion_val[0][mot_index][0]= s->last_pic.motion_val[0][mot_index][0];
+            s->cur_pic.motion_val[0][mot_index][1]= s->last_pic.motion_val[0][mot_index][1];
+            s->cur_pic.ref_index[0][4*mb_xy]      = s->last_pic.ref_index[0][4*mb_xy];
+        }
+    }
+
+
+    // kjlee: if error conceal with guess mv turned off, set mv as zeros and return
+    if ((!(s->avctx->error_concealment&FF_EC_GUESS_MVS)) ||
+        num_avail <= FFMAX(mb_width, mb_height) / 2) {
+        for (mb_y = 0; mb_y < mb_height; mb_y++) {
+            for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                const int mb_xy = mb_x + mb_y * s->mb_stride;
+                int mv_dir = (s->last_pic.f && s->last_pic.f->data[0]) ? MV_DIR_FORWARD : MV_DIR_BACKWARD;
+
+                if (IS_INTRA(s->cur_pic.mb_type[mb_xy]))
+                    continue;
+                if (!(s->error_status_table[mb_xy] & ER_MV_ERROR))
+                    continue;
+
+                s->mv[0][0][0] = 0;
+                s->mv[0][0][1] = 0;
+                s->decode_mb(s->opaque, 0, mv_dir, MV_TYPE_16X16, &s->mv,
+                             mb_x, mb_y, 0, 0);
+            }
+        }
+        return;
+    }
+
+    blocklist_length = 0;
+    for (mb_y = 0; mb_y < mb_height; mb_y++) {
+        for (mb_x = 0; mb_x < mb_width; mb_x++) {
+            const int mb_xy = mb_x + mb_y * mb_stride;
+            if (fixed[mb_xy] == MV_FROZEN) {
+                if (mb_x)               add_blocklist(blocklist, &blocklist_length, fixed, mb_x - 1, mb_y, mb_xy - 1);
+                if (mb_y)               add_blocklist(blocklist, &blocklist_length, fixed, mb_x, mb_y - 1, mb_xy - mb_stride);
+                if (mb_x+1 < mb_width)  add_blocklist(blocklist, &blocklist_length, fixed, mb_x + 1, mb_y, mb_xy + 1);
+                if (mb_y+1 < mb_height) add_blocklist(blocklist, &blocklist_length, fixed, mb_x, mb_y + 1, mb_xy + mb_stride);
+            }
+        }
+    }
+
+    for (depth = 0; ; depth++) {
+        int changed, pass, none_left;
+        int blocklist_index;
+
+        none_left = 1;
+        changed   = 1;
+        for (pass = 0; (changed || pass < 2) && pass < 10; pass++) {
+            changed = 0;
+            for (blocklist_index = 0; blocklist_index < blocklist_length; blocklist_index++) {
+                const int mb_x = blocklist[blocklist_index][0];
+                const int mb_y = blocklist[blocklist_index][1];
+                const int mb_xy = mb_x + mb_y * mb_stride;
+                int mv_predictor[8][2];
+                int ref[8];
+                int pred_count;
+                int j;
+                int best_score;
+                int best_pred;
+                int mot_index;
+                int prev_x, prev_y, prev_ref;
+
+                if ((mb_x ^ mb_y ^ pass) & 1)
+                    continue;
+                av_assert2(fixed[mb_xy] != MV_FROZEN);
+
+
+                av_assert1(!IS_INTRA(s->cur_pic.mb_type[mb_xy]));
+                av_assert1(s->last_pic.f && s->last_pic.f->data[0]);
+
+                j = 0;
+                if (mb_x > 0)
+                    j |= fixed[mb_xy - 1];
+                if (mb_x + 1 < mb_width)
+                    j |= fixed[mb_xy + 1];
+                if (mb_y > 0)
+                    j |= fixed[mb_xy - mb_stride];
+                if (mb_y + 1 < mb_height)
+                    j |= fixed[mb_xy + mb_stride];
+
+                av_assert2(j & MV_FROZEN);
+
+                if (!(j & MV_CHANGED) && pass > 1)
+                    continue;
+
+                none_left = 0;
+                pred_count = 0;
+                mot_index  = (mb_x + mb_y * mot_stride) * mot_step;
+
+                // left mb
+                if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
+                    mv_predictor[pred_count][0] =
+                        s->cur_pic.motion_val[0][mot_index - mot_step][0];
+                    mv_predictor[pred_count][1] =
+                        s->cur_pic.motion_val[0][mot_index - mot_step][1];
+                    ref[pred_count] =
+                        s->cur_pic.ref_index[0][4 * (mb_xy - 1)];
+                    pred_count++;
+                }
+                // right mb
+                if (mb_x + 1 < mb_width && fixed[mb_xy + 1] > 1) {
+                    mv_predictor[pred_count][0] =
+                        s->cur_pic.motion_val[0][mot_index + mot_step][0];
+                    mv_predictor[pred_count][1] =
+                        s->cur_pic.motion_val[0][mot_index + mot_step][1];
+                    ref[pred_count] =
+                        s->cur_pic.ref_index[0][4 * (mb_xy + 1)];
+                    pred_count++;
+                }
+                // top mb
+                if (mb_y > 0 && fixed[mb_xy - mb_stride] > 1) {
+                    mv_predictor[pred_count][0] =
+                        s->cur_pic.motion_val[0][mot_index - mot_stride * mot_step][0];
+                    mv_predictor[pred_count][1] =
+                        s->cur_pic.motion_val[0][mot_index - mot_stride * mot_step][1];
+                    ref[pred_count] =
+                        s->cur_pic.ref_index[0][4 * (mb_xy - s->mb_stride)];
+                    pred_count++;
+                }
+                // bottom mb
+                if (mb_y + 1<mb_height && fixed[mb_xy + mb_stride] > 1) {
+                    mv_predictor[pred_count][0] =
+                        s->cur_pic.motion_val[0][mot_index + mot_stride * mot_step][0];
+                    mv_predictor[pred_count][1] =
+                        s->cur_pic.motion_val[0][mot_index + mot_stride * mot_step][1];
+                    ref[pred_count] =
+                        s->cur_pic.ref_index[0][4 * (mb_xy + s->mb_stride)];
+                    pred_count++;
+                }
+                if (pred_count == 0)
+                    continue;
+
+                if (pred_count > 1) {
+                    int sum_x = 0, sum_y = 0, sum_r = 0;
+                    int max_x, max_y, min_x, min_y, max_r, min_r;
+
+                    for (j = 0; j < pred_count; j++) {
+                        sum_x += mv_predictor[j][0];
+                        sum_y += mv_predictor[j][1];
+                        sum_r += ref[j];
+                        if (j && ref[j] != ref[j - 1])
+                            goto skip_mean_and_median;
+                    }
+
+                    /* mean */
+                    mv_predictor[pred_count][0] = sum_x / j;
+                    mv_predictor[pred_count][1] = sum_y / j;
+                             ref[pred_count]    = sum_r / j;
+
+                    /* median */
+                    if (pred_count >= 3) {
+                        min_y = min_x = min_r =  99999;
+                        max_y = max_x = max_r = -99999;
+                    } else {
+                        min_x = min_y = max_x = max_y = min_r = max_r = 0;
+                    }
+                    for (j = 0; j < pred_count; j++) {
+                        max_x = FFMAX(max_x, mv_predictor[j][0]);
+                        max_y = FFMAX(max_y, mv_predictor[j][1]);
+                        max_r = FFMAX(max_r, ref[j]);
+                        min_x = FFMIN(min_x, mv_predictor[j][0]);
+                        min_y = FFMIN(min_y, mv_predictor[j][1]);
+                        min_r = FFMIN(min_r, ref[j]);
+                    }
+                    mv_predictor[pred_count + 1][0] = sum_x - max_x - min_x;
+                    mv_predictor[pred_count + 1][1] = sum_y - max_y - min_y;
+                             ref[pred_count + 1]    = sum_r - max_r - min_r;
+
+                    if (pred_count == 4) {
+                        mv_predictor[pred_count + 1][0] /= 2;
+                        mv_predictor[pred_count + 1][1] /= 2;
+                                 ref[pred_count + 1]    /= 2;
+                    }
+                    pred_count += 2;
+                }
+
+skip_mean_and_median:
+                /* zero MV */
+                mv_predictor[pred_count][0] =
+                mv_predictor[pred_count][1] =
+                         ref[pred_count]    = 0;
+                pred_count++;
+
+                prev_x   = s->cur_pic.motion_val[0][mot_index][0];
+                prev_y   = s->cur_pic.motion_val[0][mot_index][1];
+                prev_ref = s->cur_pic.ref_index[0][4 * mb_xy];
+
+                /* last MV */
+                mv_predictor[pred_count][0] = prev_x;
+                mv_predictor[pred_count][1] = prev_y;
+                         ref[pred_count]    = prev_ref;
+                pred_count++;
+
+                // kjlee: TODO: check edge dominance of nearby mbs
+
+                best_pred = 0;
+                best_score = 256 * 256 * 256 * 64;
+                for (j = 0; j < pred_count; j++) {
+                    int *linesize = s->cur_pic.f->linesize;
+                    int score = 0;
+                    uint8_t *src = s->cur_pic.f->data[0] +
+                                   mb_x * 16 + mb_y * 16 * linesize[0];
+
+                    s->cur_pic.motion_val[0][mot_index][0] =
+                        s->mv[0][0][0] = mv_predictor[j][0];
+                    s->cur_pic.motion_val[0][mot_index][1] =
+                        s->mv[0][0][1] = mv_predictor[j][1];
+
+                    // predictor intra or otherwise not available
+                    if (ref[j] < 0)
+                        continue;
+
+                    s->decode_mb(s->opaque, ref[j], MV_DIR_FORWARD,
+                                 MV_TYPE_16X16, &s->mv, mb_x, mb_y, 0, 0);
+
+                    // kjlee: update edge detection for current macroblock with yuv value of new estimated motion vector
+                    edge_detection_mb(s->cur_pic, mb_x, mb_y); 
+                    float *edge = s->cur_pic.edge_dir +
+                                   mb_x * 16 + mb_y * 16 * linesize[0];
+                    // kjlee: currently simply calculate edge direction difference
+                    if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(edge[k * linesize[0] - 1] -
+                                           edge[k * linesize[0]]);
+                    }
+                    if (mb_x + 1 < mb_width && fixed[mb_xy + 1] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(edge[k * linesize[0] + 15] -
+                                           edge[k * linesize[0] + 16]);
+                    }
+                    if (mb_y > 0 && fixed[mb_xy - mb_stride] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(edge[k - linesize[0]] - edge[k]);
+                    }
+                    if (mb_y + 1 < mb_height && fixed[mb_xy + mb_stride] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(edge[k + linesize[0] * 15] -
+                                           edge[k + linesize[0] * 16]);
+                    }
+
+
+                    /*if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(src[k * linesize[0] - 1] -
+                                           src[k * linesize[0]]);
+                    }
+                    if (mb_x + 1 < mb_width && fixed[mb_xy + 1] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(src[k * linesize[0] + 15] -
+                                           src[k * linesize[0] + 16]);
+                    }
+                    if (mb_y > 0 && fixed[mb_xy - mb_stride] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(src[k - linesize[0]] - src[k]);
+                    }
+                    if (mb_y + 1 < mb_height && fixed[mb_xy + mb_stride] > 1) {
+                        int k;
+                        for (k = 0; k < 16; k++)
+                            score += FFABS(src[k + linesize[0] * 15] -
+                                           src[k + linesize[0] * 16]);
+                    }*/
+
+                    if (score <= best_score) { // <= will favor the last MV
+                        best_score = score;
+                        best_pred  = j;
+                    }
+                }
+                s->mv[0][0][0] = mv_predictor[best_pred][0];
+                s->mv[0][0][1] = mv_predictor[best_pred][1];
+
+                for (i = 0; i < mot_step; i++)
+                    for (j = 0; j < mot_step; j++) {
+                        s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][0] = s->mv[0][0][0];
+                        s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][1] = s->mv[0][0][1];
+                    }
+
+                s->decode_mb(s->opaque, ref[best_pred], MV_DIR_FORWARD,
+                             MV_TYPE_16X16, &s->mv, mb_x, mb_y, 0, 0);
+
+
+                if (s->mv[0][0][0] != prev_x || s->mv[0][0][1] != prev_y) {
+                    fixed[mb_xy] = MV_CHANGED;
+                    changed++;
+                } else
+                    fixed[mb_xy] = MV_UNCHANGED;
+            }
+        }
+
+        if (none_left)
+            return;
+
+        next_blocklist_length = 0;
+
+        for (blocklist_index = 0; blocklist_index < blocklist_length; blocklist_index++) {
+            const int mb_x = blocklist[blocklist_index][0];
+            const int mb_y = blocklist[blocklist_index][1];
+            const int mb_xy = mb_x + mb_y * mb_stride;
+
+            if (fixed[mb_xy] & (MV_CHANGED|MV_UNCHANGED|MV_FROZEN)) {
+                fixed[mb_xy] = MV_FROZEN;
+                if (mb_x > 0)
+                    add_blocklist(next_blocklist, &next_blocklist_length, fixed, mb_x - 1, mb_y, mb_xy - 1);
+                if (mb_y > 0)
+                    add_blocklist(next_blocklist, &next_blocklist_length, fixed, mb_x, mb_y - 1, mb_xy - mb_stride);
+                if (mb_x + 1 < mb_width)
+                    add_blocklist(next_blocklist, &next_blocklist_length, fixed, mb_x + 1, mb_y, mb_xy + 1);
+                if (mb_y + 1 < mb_height)
+                    add_blocklist(next_blocklist, &next_blocklist_length, fixed, mb_x, mb_y + 1, mb_xy + mb_stride);
+            }
+        }
+        av_assert0(next_blocklist_length <= mb_height * mb_width);
+        FFSWAP(int , blocklist_length, next_blocklist_length);
+        FFSWAP(void*, blocklist, next_blocklist);
+    }
+}
+
+
 static int is_intra_more_likely(ERContext *s)
 {
     int is_intra_likely, i, j, undamaged_count, skip_amount, mb_x, mb_y;
@@ -1142,9 +1649,7 @@ void ff_er_frame_end(ERContext *s)
 
     s->cur_pic.f->decode_error_flags |= FF_DECODE_ERROR_CONCEALMENT_ACTIVE;
 
-    //kjlee testing intra only
-    //is_intra_likely = is_intra_more_likely(s);
-    is_intra_likely = 1;
+    is_intra_likely = is_intra_more_likely(s);
     /* set unknown mb-type to most likely */
     for (i = 0; i < s->mb_num; i++) {
         const int mb_xy = s->mb_index2xy[i];
@@ -1206,6 +1711,9 @@ void ff_er_frame_end(ERContext *s)
         }
     }
 
+    // kjlee: run edge detection for full frame 
+    edge_detection_picture(s->cur_pic);
+
     /* guess MVs */
     if (s->cur_pic.f->pict_type == AV_PICTURE_TYPE_B) {
         for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
@@ -1252,7 +1760,9 @@ void ff_er_frame_end(ERContext *s)
             }
         }
     } else
-        guess_mv(s);
+        //kjlee fix
+        //guess_mv(s);
+        guess_mv_edge(s);
 
     /* fill DC for inter blocks */
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
@@ -1336,26 +1846,26 @@ void ff_er_frame_end(ERContext *s)
     }
 #endif
 
-//    if (s->avctx->error_concealment & FF_EC_DEBLOCK) {
-//        /* filter horizontal block boundaries */
-//        h_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
-//                       s->mb_height * 2, linesize[0], 1);
-//
-//        /* filter vertical block boundaries */
-//        v_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
-//                       s->mb_height * 2, linesize[0], 1);
-//
-//        if (s->cur_pic.f->data[2]) {
-//            h_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
-//                        s->mb_height, linesize[1], 0);
-//            h_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
-//                        s->mb_height, linesize[2], 0);
-//            v_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
-//                        s->mb_height, linesize[1], 0);
-//            v_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
-//                        s->mb_height, linesize[2], 0);
-//        }
-//    }
+    if (s->avctx->error_concealment & FF_EC_DEBLOCK) {
+        /* filter horizontal block boundaries */
+        h_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
+                       s->mb_height * 2, linesize[0], 1);
+
+        /* filter vertical block boundaries */
+        v_block_filter(s, s->cur_pic.f->data[0], s->mb_width * 2,
+                       s->mb_height * 2, linesize[0], 1);
+
+        if (s->cur_pic.f->data[2]) {
+            h_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
+                        s->mb_height, linesize[1], 0);
+            h_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
+                        s->mb_height, linesize[2], 0);
+            v_block_filter(s, s->cur_pic.f->data[1], s->mb_width,
+                        s->mb_height, linesize[1], 0);
+            v_block_filter(s, s->cur_pic.f->data[2], s->mb_width,
+                        s->mb_height, linesize[2], 0);
+        }
+    }
 
     /* clean a few tables */
     for (i = 0; i < s->mb_num; i++) {

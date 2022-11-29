@@ -58,7 +58,6 @@ static void set_mv_strides(ERContext *s, ptrdiff_t *mv_step, ptrdiff_t *stride)
 static void put_dc(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
                    uint8_t *dest_cr, int mb_x, int mb_y)
 {
-    printf("put dc\n");
     int *linesize = s->cur_pic.f->linesize;
     int dc, dcu, dcv, y, i;
     for (i = 0; i < 4; i++) {
@@ -129,26 +128,289 @@ static void filter181(int16_t *data, int width, int height, ptrdiff_t stride)
         }
     }
 }
+/**
+ * Replace the current MB with a flat dc-only version.
+ */
+static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
+                   uint8_t *dest_cr, int mb_x, int mb_y)
+{
+    int *linesize = s->cur_pic.f->linesize;
+
+    int edge_idx = 0;
+    int mb_xy = mb_y * s->mb_stride + mb_x;
+    int x, y;
+    float x_inc = 0;
+    float y_inc = 0;
+    int reference_pixels[4] = {0,0,0,0};
+
+    float curr_x, curr_y;
+    int curr_pix_x, curr_pix_y;
+    int curr_mb_x , curr_mb_y, curr_mb_xy;
+    int error_j = 0;
+    float dist_right, dist_left;
+    int right_x, right_y, left_x, left_y;
+    for (y = 0; y < 16; y++) {
+        for (x = 0; x < 16; x++){
+            if(x < 8 && y < 8 && x >= y) edge_idx = 0;
+            else if(x >= 8 && y < 8 && (x-8) < 8-y) edge_idx = 1;
+            else if(x < 8 && y >= 8 && x >= 8-y) edge_idx = 2;
+            else if(x >= 8 && y >= 8 && x <= y) edge_idx = 3;
+            else if(x < 8 && y < 8 && x >= y) edge_idx = 4;
+            else if(x < 8 && y >= 8 && x < 8-y) edge_idx = 5;
+            else if(x >= 8 && y < 8 && (x-8) >= 8-y) edge_idx = 6;
+            else if(x >= 8 && y >= 8 && x > y) edge_idx = 7;
+            float edge_dir = tan(s->cur_pic.mb_edge_dir[8*mb_xy+edge_idx]);
+            if(abs(edge_dir) >= 1){
+                x_inc = 1 / edge_dir;
+                y_inc = 1;
+            } else{
+                x_inc = 1;
+                y_inc = edge_dir;
+            }
+
+            curr_x = (float) (x + mb_x * 16);
+            curr_y = (float) (y + mb_y * 16);
+            
+            while(1){
+                curr_x += x_inc;
+                curr_y -= y_inc;
+
+                curr_pix_x = round(curr_x);
+                curr_pix_y = round(curr_y);
+
+                curr_mb_x = curr_pix_x / 16;
+                curr_mb_y = curr_pix_y / 16;
+
+                curr_mb_xy = curr_mb_x + curr_mb_y * s->mb_stride;
+                int error_j= s->error_status_table[curr_mb_xy];
+                if(!(error_j&ER_AC_ERROR)){
+                    reference_pixels[0] = curr_pix_x;
+                    reference_pixels[1] = curr_pix_y;
+                    break;
+                }
+
+                if(curr_pix_x >= s->cur_pic.f->width || curr_pix_x < 0 || curr_pix_y >= s->cur_pic.f->height || curr_pix_y < 0) break;
+            }
+            while(1){
+                curr_x -= x_inc;
+                curr_y += y_inc;
+
+                curr_pix_x = round(curr_x);
+                curr_pix_y = round(curr_y);
+
+                curr_mb_x = curr_pix_x / 16;
+                curr_mb_y = curr_pix_y / 16;
+
+                curr_mb_xy = curr_mb_x + curr_mb_y * s->mb_stride;
+                int error_j= s->error_status_table[curr_mb_xy];
+                if(!(error_j&ER_AC_ERROR)){
+                    reference_pixels[2] = curr_pix_x;
+                    reference_pixels[3] = curr_pix_y;
+                    break;
+                }
+
+                if(curr_pix_x >= s->cur_pic.f->width || curr_pix_x < 0 || curr_pix_y >= s->cur_pic.f->height || curr_pix_y < 0) break;
+            }
+
+            right_x = reference_pixels[0];
+            right_y = reference_pixels[1];
+            left_x = reference_pixels[2];
+            left_y = reference_pixels[3];
+        
+            dist_right = sqrt((x-right_x)*(x-right_x)+(y-right_y)*(y-right_y));
+            dist_left = sqrt((x-left_x)*(x-left_x) + (y-left_y)*(y-left_y));
+          
+            if(x + mb_x * 16 > s->cur_pic.f->width || y + mb_y * 16 > s->cur_pic.f->height) continue;
+
+           // printf("%d %d %d %d\n", mb_x, mb_y, x, y);
+            //dest_y[x + mb_x * 16 + (y + mb_y * 16) * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
+           // dest_y[x + y * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
+            dest_y[x + mb_x * 16 + (y + mb_y * 16) * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
+            dest_cb[(y + mb_y * 16)/2*linesize[1] + (x + mb_x * 16)/2] = round((dist_right * dest_cb[left_y/2*linesize[1] + left_x/2] + dist_left * dest_cb[right_y/2*linesize[1] + right_x/2]) / (dist_right + dist_left));
+            dest_cr[(y + mb_y * 16)/2*linesize[2] + (x + mb_x * 16)/2] = round((dist_right * dest_cr[left_y/2*linesize[2] + left_x/2] + dist_left * dest_cr[right_y/2*linesize[2] + right_x/2]) / (dist_right + dist_left));
+       }
+            
+    
+    }
+
+
+
+    /*for (y = 0; y < 8; y++) {
+        for (x = 0; x < 8; x++){
+            if(x < 4 && y < 4 && x >= y) edge_idx = 0;
+            else if(x >= 4 && y < 4 && (x-4) < 4-y) edge_idx = 1;
+            else if(x < 4 && y >= 4 && x >= 7-y) edge_idx = 2;
+            else if(x >= 4 && y >= 4 && x <= y) edge_idx = 3;
+            else if(x < 4 && y < 4 && x >= y) edge_idx = 4;
+            else if(x < 4 && y >= 4 && x < 7-y) edge_idx = 5;
+            else if(x >= 4 && y < 4 && (x-4) >= 4-y) edge_idx = 6;
+            else if(x >= 4 && y >= 4 && x > y) edge_idx = 7;
+        }
+            
+    
+    }*/
+
+}
 
 /**
- * guess the dc of blocks which do not have an undamaged dc
+ * guess the dominant edges of all macroblocks
+ * dominant edges are 8 values two values per one side of each macroblock
+ * right-top/right-bottom/left-top/left-bottom/bottom-left/bottom-right/top-left/top-right
  * this version uses edge information 
  * @param w     width in 8 pixel blocks
  * @param h     height in 8 pixel blocks
 */
-static void guess_dc_edge(ERContext *s, int16_t *dc, int w, int h, ptrdiff_t stride, int is_luma)
+static void guess_dominant_edge(ERContext *s, int w, int h, ptrdiff_t stride)
 {
-    int16_t (*col)[2] = av_malloc_array(stride, h*sizeof(int16_t)*2);
-    uint32_t (*dist)[2] = av_malloc_array(stride, h*sizeof(uint32_t)*2);
+    int b_x, b_y;
 
-    if(!col || !dist){
-        av_log(s->avctx, AV_LOG_ERROR, "guess_dc_edge() is out of memory\n");
-        goto fail;
+    float mag[8];
+    float dir[8];
+
+    // left to right
+    for(b_y=0; b_y<h; b_y++){
+        for(b_x=0; b_x<w; b_x++){
+            int mb_index_j= b_x + b_y*s->mb_stride;
+            int error_j= s->error_status_table[mb_index_j];
+            int intra_j = IS_INTRA(s->cur_pic.mb_type[mb_index_j]);
+            if(intra_j==0 || !(error_j&ER_AC_ERROR)){
+                mag[6] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 6];
+                mag[7] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 7];
+                dir[6] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 6];
+                dir[7] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 7];
+                mag[4] = mag[6]; mag[5] = mag[7];
+                dir[4] = dir[6]; dir[5] = dir[7];
+               
+            }
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 4] < mag[4]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 4] = mag[4];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 4] = dir[4];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 5] < mag[5]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 5] = mag[5];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 5] = dir[5];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 6] < mag[6]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 6] = mag[6];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 6] = dir[6];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 7] < mag[7]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 7] = mag[7];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 7] = dir[7];
+            }
+            
+            
+        }
+        
+        //right to left
+        for(b_x=w-1; b_x>=0; b_x--){
+            int mb_index_j= b_x + b_y*s->mb_stride;
+            int error_j= s->error_status_table[mb_index_j];
+            int intra_j = IS_INTRA(s->cur_pic.mb_type[mb_index_j]);
+            if(intra_j==0 || !(error_j&ER_AC_ERROR)){
+                mag[4] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 4];
+                mag[5] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 5];
+                dir[4] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 4];
+                dir[5] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 5];
+                mag[6] = mag[4]; mag[7] = mag[5];
+                dir[6] = dir[4]; dir[7] = dir[5];
+               
+            }
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 4] < mag[4]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 4] = mag[4];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 4] = dir[4];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 5] < mag[5]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 5] = mag[5];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 5] = dir[5];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 6] < mag[6]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 6] = mag[6];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 6] = dir[6];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 7] < mag[7]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 7] = mag[7];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 7] = dir[7];
+            }
+        }
     }
+    for(b_x=0; b_x<w; b_x++){
+        
+        for(b_y=0; b_y<h; b_y++){
+            int mb_index_j= b_x + b_y*s->mb_stride;
+            int error_j= s->error_status_table[mb_index_j];
+            int intra_j = IS_INTRA(s->cur_pic.mb_type[mb_index_j]);
+            if(intra_j==0 || !(error_j&ER_AC_ERROR)){
+                mag[2] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 2];
+                mag[3] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 3];
+                dir[2] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 2];
+                dir[3] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 3];
+                mag[0] = mag[2]; mag[1] = mag[3];
+                dir[0] = dir[2]; dir[1] = dir[3];
+               
+            }
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 0] < mag[0]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 0] = mag[0];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 0] = dir[0];
+            }
 
-fail:
-    av_freep(&col);
-    av_freep(&dist);
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 1] < mag[1]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 1] = mag[1];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 1] = dir[1];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 2] < mag[2]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 2] = mag[2];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 2] = dir[2];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 3] < mag[3]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 3] = mag[3];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 3] = dir[3];
+            }
+            
+        }
+        
+        for(b_y=h-1; b_y>=0; b_y--){
+            int mb_index_j= b_x + b_y*s->mb_stride;
+            int error_j= s->error_status_table[mb_index_j];
+            int intra_j = IS_INTRA(s->cur_pic.mb_type[mb_index_j]);
+            if(intra_j==0 || !(error_j&ER_AC_ERROR)){
+                mag[0] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 0];
+                mag[1] = s->cur_pic.mb_edge_mag[mb_index_j * 8 + 1];
+                dir[0] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 0];
+                dir[1] = s->cur_pic.mb_edge_dir[mb_index_j * 8 + 1];
+                mag[2] = mag[0]; mag[3] = mag[1];
+                dir[2] = dir[0]; dir[3] = dir[1];
+               
+            }
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 0] < mag[0]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 0] = mag[0];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 0] = dir[0];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 1] < mag[1]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 1] = mag[1];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 1] = dir[1];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 2] < mag[2]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 2] = mag[2];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 2] = dir[2];
+            }
+
+            if(s->cur_pic.mb_edge_mag[mb_index_j * 8 + 3] < mag[3]) {
+                s->cur_pic.mb_edge_mag[mb_index_j * 8 + 3] = mag[3];
+                s->cur_pic.mb_edge_dir[mb_index_j * 8 + 3] = dir[3];
+            }
+        }
+    }
 
 }
 
@@ -156,13 +418,25 @@ fail:
 
 
 
-static int convolution(AVFrame *f, int kernel[3][3], int row, int col) {
+static int convolution(ERContext *s, int kernel[3][3], int row, int col) {
 	int i, j, sum = 0;
-    int *linesize = f->linesize;
+    int *linesize = s->cur_pic.f->linesize;
+    int mb_stride = s->mb_stride;
 
-	for (i = 0; i < 3; i++) {
-		for (j = 0; j < 3; j++) {
-            sum += f->data[0][(i+row)*linesize[0]+j+col] * kernel[i][j];
+    int curr_x, curr_y;
+    int curr_mb_x, curr_mb_y, curr_mb_xy;
+    int error_j;
+    
+	for (i = -1; i < 2; i++) {
+		for (j = -1; j < 2; j++) {
+            curr_x = j + col;
+            curr_y = i + row;
+            curr_mb_x = curr_x / 16;
+            curr_mb_y = curr_y / 16;
+            curr_mb_xy = curr_mb_x + curr_mb_y * mb_stride;
+            error_j = s->error_status_table[curr_mb_xy];
+            if(error_j & (ER_DC_ERROR | ER_MV_ERROR | ER_AC_ERROR)) return 0;
+            sum += s->cur_pic.f->data[0][(i+row)*linesize[0]+j+col] * kernel[i+1][j+1];
 
 		}
 	}
@@ -171,8 +445,8 @@ static int convolution(AVFrame *f, int kernel[3][3], int row, int col) {
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
-static void edge_detection_mb(ERPicture p, int mb_x, int mb_y){
-    int width = p.f->width; int height = p.f->height;
+static void edge_detection_mb(ERContext *s, int mb_x, int mb_y){
+    int width = s->cur_pic.f->width; int height = s->cur_pic.f->height;
     
     int start_x = max(16*mb_x, 1);
     int end_x = min(16*(mb_x+1), width - 1);
@@ -192,19 +466,36 @@ static void edge_detection_mb(ERPicture p, int mb_x, int mb_y){
     int i, j, gx, gy;
     for (i = start_y; i < end_y; i++) {
 		for (j = start_x; j < end_x; j++) {
-			gx = convolution(p.f, mx, i, j);
-			gy = convolution(p.f, my, i, j);
-            p.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
-            p.edge_dir[i * width + j] = atan2(gy, gx);
+			gx = convolution(s, mx, i, j);
+			gy = convolution(s, my, i, j);
+            s->cur_pic.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
+            s->cur_pic.edge_dir[i * width + j] = atan2(gy, gx);
 		}
 	}
 
 }
-static void edge_detection_picture(ERPicture p)
+
+static void calculate_dominant_edge(ERPicture p, int mb_x, int mb_y, int width, int height, float* dst_dir, float* dst_mag)
 {
-    int width = p.f->width; int height = p.f->height;
-    p.edge_mag = av_malloc_array(width, height * sizeof(float));
-    p.edge_dir = av_malloc_array(width, height * sizeof(float));
+    float max_mag = 0;
+    float max_dir = 0;
+    float mag = 0;
+    float mag_sum = 0;
+    float dir_sum = 0;
+    int curr_x, curr_y;
+    
+    
+
+}
+
+
+static void edge_detection_picture(ERContext *s, int mb_width, int mb_height, int mb_stride)
+{
+    int width = s->cur_pic.f->width; int height = s->cur_pic.f->height;
+    s->cur_pic.edge_mag = av_malloc_array(width, height * sizeof(float));
+    s->cur_pic.edge_dir = av_malloc_array(width, height * sizeof(float));
+    s->cur_pic.mb_edge_dir = av_malloc_array(mb_stride * 8, mb_height * sizeof(float));
+    s->cur_pic.mb_edge_mag = av_malloc_array(mb_stride * 8, mb_height * sizeof(float));
   
     int i, j, gx, gy;
 	int my[3][3] = {
@@ -218,19 +509,199 @@ static void edge_detection_picture(ERPicture p)
 		{1, 2, 1}
 	};
 	
-	for (i = 1; i < p.f->height - 2; i++) {
-		for (j = 1; j < p.f->width - 2; j++) {
-			gx = convolution(p.f, mx, i, j);
-			gy = convolution(p.f, my, i, j);
-            p.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
-            p.edge_dir[i * width + j] = atan2(gy, gx);
+	for (i = 1; i < height - 1; i++) {
+		for (j = 1; j < width - 1; j++) {
+			gx = convolution(s, mx, i, j);
+			gy = convolution(s, my, i, j);
+            s->cur_pic.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
+            s->cur_pic.edge_dir[i * width + j] = atan2(gy, gx);
 		}
 	}
 
-   
+
+    float max_mag = 0;
+    float max_dir = 0;
+    float mag = 0;
+    float mag_sum = 0;
+    float dir_sum = 0;
+    int curr_x, curr_y;
+    for(int i = 0 ; i < mb_height ; i++)
+    {
+        for(int j = 0 ; j < mb_width ; j++){
+            int mb_xy = j + mb_stride * i;
+            int edge_mb_xy = 8 * mb_xy;
+            //calculate_dominant_edge(p, j, i, p.f->width, p.f->height, &p.mb_edge_dir[edge_mb_xy], &p.mb_edge_mag[edge_mb_xy]);
+            // top-left
+            for(int k = 0 ; k < 8 ; k++){
+                curr_x = j * 16 + k;
+                curr_y = i * 16;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 0] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 0] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 0] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 0] = dir_sum / mag_sum;
+            }
+
+            // top-right
+            for(int k = 8 ; k < 16 ; k++){
+                curr_x = j * 16 + k;
+                curr_y = i * 16 ;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 1] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 1] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 1] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 1] = dir_sum / mag_sum;
+            }
+            
+            // bottom-left
+            for(int k = 0 ; k < 8 ; k++){
+                curr_x = j * 16 + k;
+                curr_y = (i+1) * 16 - 1;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 2] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 2] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 2] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 2] = dir_sum / mag_sum;
+            }
+            
+
+            // bottom-right
+            for(int k = 8 ; k < 16 ; k++){
+                curr_x = j * 16 + k;
+                curr_y = (i+1) * 16 - 1;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 3] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 3] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 3] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 3] = dir_sum / mag_sum;
+            }
+            
+
+            // left-top
+            for(int k = 0 ; k < 8 ; k++){
+                curr_x = j * 16 ;
+                curr_y = i * 16 + k;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 4] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 4] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 4] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 4] = dir_sum / mag_sum;
+            }
+            
+
+            // left-bottom
+            for(int k = 8 ; k < 16 ; k++){
+                curr_x = j * 16 ;
+                curr_y = i * 16 + k;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 5] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 5] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 5] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 5] = dir_sum / mag_sum;
+            }
+            
+            
+            // right-top
+            for(int k = 0 ; k < 8 ; k++){
+                curr_x = (j+1) * 16 - 1;
+                curr_y = i * 16 + k;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 6] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 6] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 6] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 6] = dir_sum / mag_sum;
+            }
+            
+            
+            // right-bottom
+            for(int k = 8 ; k < 16 ; k++){
+                curr_x = (j+1) * 16 - 1;
+                curr_y = i * 16 + k;
+                if(curr_x < width && curr_y < height)
+                {
+                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
+                    if(mag > max_mag) max_mag = mag;
+                    mag_sum += mag;
+                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
+                }
+            }
+            if(mag_sum == 0){
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 7] = 0;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 7] = 0;
+            } else{
+                s->cur_pic.mb_edge_mag[edge_mb_xy + 7] = max_mag;
+                s->cur_pic.mb_edge_dir[edge_mb_xy + 7] = dir_sum / mag_sum;
+            }
+            
+        }
+    }
+
 }
 
-static void edge_detection(ERContext *s)
+/*static void edge_detection(ERContext *s)
 {
 
     edge_detection_picture(s->cur_pic); 
@@ -243,7 +714,7 @@ static void edge_detection(ERContext *s)
         av_free(s->last_pic.edge_dir);
         av_free(s->last_pic.edge_mag);
     }
-    /*s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+    s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
     s->cur_pic.edge_dir = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
     s->cur_pic.mb_edge_mag = av_malloc_array(s->mb_stride, s->mb_height*sizeof(float));
     s->cur_pic.mb_edge_dir = av_malloc_array(s->mb_stride, s->mb_height*sizeof(float));
@@ -268,8 +739,8 @@ static void edge_detection(ERContext *s)
             s->cur_pic.edge_mag[i * s->cur_pic.f->width + j] = sqrt(gx*gx + gy*gy);
             s->cur_pic.edge_dir[i * s->cur_pic.f->width + j] = atan2(gy, gx);
 		}
-	}*/
-}
+	}
+}*/
 
 /**
  * guess the dc of blocks which do not have an undamaged dc
@@ -727,7 +1198,7 @@ static void guess_mv(ERContext *s)
                     } else {
                         min_x = min_y = max_x = max_y = min_r = max_r = 0;
                     }
-                    for (j = 0; j < pred_count; j++) {
+                    for (j = 0; j < pred_count; j++) { 
                         max_x = FFMAX(max_x, mv_predictor[j][0]);
                         max_y = FFMAX(max_y, mv_predictor[j][1]);
                         max_r = FFMAX(max_r, ref[j]);
@@ -866,9 +1337,9 @@ static void guess_mv_edge(ERContext *s)
 {
 
 
-
-    s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
-    s->cur_pic.edge_dir = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+    
+    //s->cur_pic.edge_mag = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
+   // s->cur_pic.edge_dir = av_malloc_array(s->cur_pic.f->width, s->cur_pic.f->height*sizeof(float));
    
     int (*blocklist)[2], (*next_blocklist)[2];
     uint8_t *fixed;
@@ -1131,7 +1602,7 @@ skip_mean_and_median:
                                  MV_TYPE_16X16, &s->mv, mb_x, mb_y, 0, 0);
 
                     // kjlee: update edge detection for current macroblock with yuv value of new estimated motion vector
-                    edge_detection_mb(s->cur_pic, mb_x, mb_y); 
+                    edge_detection_mb(s, mb_x, mb_y); 
                     float *edge = s->cur_pic.edge_dir +
                                    mb_x * 16 + mb_y * 16 * linesize[0];
                     // kjlee: currently simply calculate edge direction difference
@@ -1158,31 +1629,6 @@ skip_mean_and_median:
                             score += FFABS(edge[k + linesize[0] * 15] -
                                            edge[k + linesize[0] * 16]);
                     }
-
-
-                    /*if (mb_x > 0 && fixed[mb_xy - 1] > 1) {
-                        int k;
-                        for (k = 0; k < 16; k++)
-                            score += FFABS(src[k * linesize[0] - 1] -
-                                           src[k * linesize[0]]);
-                    }
-                    if (mb_x + 1 < mb_width && fixed[mb_xy + 1] > 1) {
-                        int k;
-                        for (k = 0; k < 16; k++)
-                            score += FFABS(src[k * linesize[0] + 15] -
-                                           src[k * linesize[0] + 16]);
-                    }
-                    if (mb_y > 0 && fixed[mb_xy - mb_stride] > 1) {
-                        int k;
-                        for (k = 0; k < 16; k++)
-                            score += FFABS(src[k - linesize[0]] - src[k]);
-                    }
-                    if (mb_y + 1 < mb_height && fixed[mb_xy + mb_stride] > 1) {
-                        int k;
-                        for (k = 0; k < 16; k++)
-                            score += FFABS(src[k + linesize[0] * 15] -
-                                           src[k + linesize[0] * 16]);
-                    }*/
 
                     if (score <= best_score) { // <= will favor the last MV
                         best_score = score;
@@ -1347,6 +1793,9 @@ static int er_supported(ERContext *s)
  * @param status the status at the end (ER_MV_END, ER_AC_ERROR, ...), it is
  *               assumed that no earlier end or error of the same type occurred
  */
+
+
+int temp = 0;
 void ff_er_add_slice(ERContext *s, int startx, int starty,
                      int endx, int endy, int status)
 {
@@ -1710,10 +2159,10 @@ void ff_er_frame_end(ERContext *s)
 
         }
     }
-
     // kjlee: run edge detection for full frame 
-    edge_detection_picture(s->cur_pic);
+    edge_detection_picture(s, s->mb_width, s->mb_height, s->mb_stride);
 
+    
     /* guess MVs */
     if (s->cur_pic.f->pict_type == AV_PICTURE_TYPE_B) {
         for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
@@ -1759,10 +2208,12 @@ void ff_er_frame_end(ERContext *s)
                              mb_x, mb_y, 0, 0);
             }
         }
-    } else
+    } else{
         //kjlee fix
         //guess_mv(s);
         guess_mv_edge(s);
+    }
+        
 
     /* fill DC for inter blocks */
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
@@ -1815,6 +2266,29 @@ void ff_er_frame_end(ERContext *s)
     guess_dc(s, s->dc_val[0], s->mb_width*2, s->mb_height*2, s->b8_stride, 1);
     guess_dc(s, s->dc_val[1], s->mb_width  , s->mb_height  , s->mb_stride, 0);
     guess_dc(s, s->dc_val[2], s->mb_width  , s->mb_height  , s->mb_stride, 0);
+
+    //kjlee
+    guess_dominant_edge(s, s->mb_width, s->mb_height, s->mb_stride);
+    if(temp ==0){
+         
+         char buf[1024];
+         snprintf(buf, sizeof(buf), "%s-%d-lum.ppm", "test", 0);
+         FILE *fp = fopen(buf, "w+");
+        fprintf(fp, "P6\n%d %d\n255\n", s->cur_pic.f->width, s->cur_pic.f->height); //  The PPM file adds fixed header information.
+
+        uint8_t* temp_edge = (uint8_t*)malloc(s->cur_pic.f->width * s->cur_pic.f->height*3);
+        for(int k = 0 ; k < s->cur_pic.f->width * s->cur_pic.f->height ; k++){
+            temp_edge[3*k] = (uint8_t)s->cur_pic.edge_mag[k];
+            temp_edge[3*k+1] = (uint8_t)s->cur_pic.edge_mag[k];
+            temp_edge[3*k+2] = (uint8_t)s->cur_pic.edge_mag[k];
+        }
+
+    for (int y=0; y<s->cur_pic.f->height; y++)
+        fwrite(&temp_edge[y * s->cur_pic.f->width * 3], 1, s->cur_pic.f->width*3, fp); //ppm storage format
+    fclose(fp);
+    free(temp_edge);
+    temp++;
+    }
 #endif
 
     /* filter luma DC */
@@ -1822,7 +2296,7 @@ void ff_er_frame_end(ERContext *s)
 
 #if 1
     /* render DC only intra */
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
+    /*for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
             uint8_t *dest_y, *dest_cb, *dest_cr;
             const int mb_xy   = mb_x + mb_y * s->mb_stride;
@@ -1842,6 +2316,36 @@ void ff_er_frame_end(ERContext *s)
                 dest_cb = dest_cr = NULL;
 
             put_dc(s, dest_y, dest_cb, dest_cr, mb_x, mb_y);
+            
+        }
+    }*/
+
+    //kjlee
+     uint8_t *dest_y, *dest_cb, *dest_cr;
+    dest_y  = s->cur_pic.f->data[0];
+    dest_cb = s->cur_pic.f->data[1];
+    dest_cr = s->cur_pic.f->data[2];
+    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
+        for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+           
+            const int mb_xy   = mb_x + mb_y * s->mb_stride;
+            const int mb_type = s->cur_pic.mb_type[mb_xy];
+
+            int error = s->error_status_table[mb_xy];
+
+            if (IS_INTER(mb_type))
+                continue;
+            if (!(error & ER_AC_ERROR))
+                continue; // undamaged
+
+            
+            if (!s->cur_pic.f->data[2])
+                dest_cb = dest_cr = NULL;
+
+            //put_dc(s, dest_y, dest_cb, dest_cr, mb_x, mb_y);
+            //kjlee
+            put_dc_edge(s, dest_y, dest_cb, dest_cr, mb_x, mb_y);
+
         }
     }
 #endif

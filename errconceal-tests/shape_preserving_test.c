@@ -280,7 +280,7 @@ EdgePixel get_dominant_edge(Edge* data, int mb_width_idx, int mb_height_idx, int
     if(direction == LEFT){
         for(int i = 0 ; i < MB_SIZE ; i++){
             if(data->imageData[mb_height_idx*MB_SIZE + i][mb_width_idx*MB_SIZE] > max_magnitude){
-                max_magnitude = data->imageData[mb_height_idx*MB_SIZE + i][mb_width_idx*MB_SIZE];
+                max_magnitude = data->imageData[mb_height_idx*MB_SIZE + i]width_idx*MB_SIZE];
                 max_direction = atan2(data->gy[mb_height_idx*MB_SIZE + i][mb_width_idx*MB_SIZE], data->gx[mb_height_idx*MB_SIZE + i][mb_width_idx*MB_SIZE]);
             }
         }

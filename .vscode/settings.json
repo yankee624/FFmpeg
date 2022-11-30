@@ -3,7 +3,7 @@
         {
             "cwd": "/workspace/22-LossAware/FFmpeg",
             "binaryPath": "/workspace/22-LossAware/FFmpeg/ffmpeg_g",
-            "binaryArgs": ["-i","../loss-aware-inference/video_loss/build/output/slice300-bitr0-ec1-il0-loss0.05-bursty0.1/0000_loss.h264", "../loss-aware-inference/video_loss/build/output/slice300-bitr0-ec1-il0-loss0.05-bursty0.1/0000_loss.mp4"]
+            "binaryArgs": ["-i","../loss-aware-inference/video_loss/build/output/slice300-bitr0-ec1-il0-loss0.05-bursty0.1/0000.h264", "../loss-aware-inference/video_loss/build/output/slice300-bitr0-ec1-il0-loss0.05-bursty0.1/0000.mp4"]
         
         }
     ]

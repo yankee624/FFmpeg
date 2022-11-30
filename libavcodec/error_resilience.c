@@ -132,7 +132,7 @@ static void filter181(int16_t *data, int width, int height, ptrdiff_t stride)
  * Replace the current MB with a flat dc-only version.
  */
 static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
-                   uint8_t *dest_cr, int mb_x, int mb_y)
+                   uint8_t *dest_cr, int mb_x, int mb_y, int mb_stride)
 {
     int *linesize = s->cur_pic.f->linesize;
 
@@ -149,24 +149,23 @@ static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
     int error_j = 0;
     float dist_right, dist_left;
     int right_x, right_y, left_x, left_y;
+
+
+   
+
+    float direction = tan(s->cur_pic.mb_edge_dir[mb_y * mb_stride + mb_x]);
+    printf("dir: %f\n", s->cur_pic.mb_edge_dir[mb_y * mb_stride + mb_x]*180/3.14);
+    if(abs(direction) >= 1){
+        x_inc = 1 / direction;
+        y_inc = 1;
+    } else{
+        x_inc = 1;
+        y_inc = direction;
+    }
+
+
     for (y = 0; y < 16; y++) {
         for (x = 0; x < 16; x++){
-            if(x < 8 && y < 8 && x >= y) edge_idx = 0;
-            else if(x >= 8 && y < 8 && (x-8) < 8-y) edge_idx = 1;
-            else if(x < 8 && y >= 8 && x >= 8-y) edge_idx = 2;
-            else if(x >= 8 && y >= 8 && x <= y) edge_idx = 3;
-            else if(x < 8 && y < 8 && x >= y) edge_idx = 4;
-            else if(x < 8 && y >= 8 && x < 8-y) edge_idx = 5;
-            else if(x >= 8 && y < 8 && (x-8) >= 8-y) edge_idx = 6;
-            else if(x >= 8 && y >= 8 && x > y) edge_idx = 7;
-            float edge_dir = tan(s->cur_pic.mb_edge_dir[8*mb_xy+edge_idx]);
-            if(abs(edge_dir) >= 1){
-                x_inc = 1 / edge_dir;
-                y_inc = 1;
-            } else{
-                x_inc = 1;
-                y_inc = edge_dir;
-            }
 
             curr_x = (float) (x + mb_x * 16);
             curr_y = (float) (y + mb_y * 16);
@@ -183,7 +182,7 @@ static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
 
                 curr_mb_xy = curr_mb_x + curr_mb_y * s->mb_stride;
                 int error_j= s->error_status_table[curr_mb_xy];
-                if(!(error_j&ER_AC_ERROR)){
+                if(!(error_j&ER_DC_ERROR)){
                     reference_pixels[0] = curr_pix_x;
                     reference_pixels[1] = curr_pix_y;
                     break;
@@ -203,7 +202,7 @@ static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
 
                 curr_mb_xy = curr_mb_x + curr_mb_y * s->mb_stride;
                 int error_j= s->error_status_table[curr_mb_xy];
-                if(!(error_j&ER_AC_ERROR)){
+                if(!(error_j&ER_DC_ERROR)){
                     reference_pixels[2] = curr_pix_x;
                     reference_pixels[3] = curr_pix_y;
                     break;
@@ -222,7 +221,7 @@ static void put_dc_edge(ERContext *s, uint8_t *dest_y, uint8_t *dest_cb,
           
             if(x + mb_x * 16 > s->cur_pic.f->width || y + mb_y * 16 > s->cur_pic.f->height) continue;
 
-           // printf("%d %d %d %d\n", mb_x, mb_y, x, y);
+            //printf("%d %d %d %d %d %d %f\n",right_x, right_y, left_x, left_y, dest_y[left_x + left_y * linesize[0]], dest_y[right_x + right_y * linesize[0]], s->cur_pic.mb_edge_dir[mb_y * mb_stride + mb_x]*180/3.14);
             //dest_y[x + mb_x * 16 + (y + mb_y * 16) * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
            // dest_y[x + y * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
             dest_y[x + mb_x * 16 + (y + mb_y * 16) * linesize[0]] = round((dist_right * dest_y[left_x + left_y * linesize[0]] + dist_left * dest_y[right_x + right_y * linesize[0]]) / (dist_right + dist_left));
@@ -435,8 +434,32 @@ static int convolution(ERContext *s, int kernel[3][3], int row, int col) {
             curr_mb_y = curr_y / 16;
             curr_mb_xy = curr_mb_x + curr_mb_y * mb_stride;
             error_j = s->error_status_table[curr_mb_xy];
-            if(error_j & (ER_DC_ERROR | ER_MV_ERROR | ER_AC_ERROR)) return 0;
-            sum += s->cur_pic.f->data[0][(i+row)*linesize[0]+j+col] * kernel[i+1][j+1];
+            
+            if(error_j & ER_MB_ERROR){
+                curr_x = col;
+                curr_y = row - i;
+                curr_mb_x = curr_x / 16;
+                curr_mb_y = curr_y / 16;
+                curr_mb_xy = curr_mb_x + curr_mb_y * mb_stride;
+                error_j = s->error_status_table[curr_mb_xy];
+                if(!(error_j & ER_MB_ERROR)){
+                    sum += s->cur_pic.f->data[0][curr_y*linesize[0]+curr_x] * kernel[i+1][j+1];
+                    continue;
+                }
+
+                curr_x = col - j;
+                curr_y = row;
+                curr_mb_x = curr_x / 16;
+                curr_mb_y = curr_y / 16;
+                curr_mb_xy = curr_mb_x + curr_mb_y * mb_stride;
+                error_j = s->error_status_table[curr_mb_xy];
+                if(!(error_j & ER_MB_ERROR)){
+                    sum += s->cur_pic.f->data[0][curr_y*linesize[0]+curr_x] * kernel[i+1][j+1];
+                    continue;
+                }
+
+            } 
+            sum += s->cur_pic.f->data[0][curr_y*linesize[0]+curr_x] * kernel[i+1][j+1];
 
 		}
 	}
@@ -487,15 +510,61 @@ static void calculate_dominant_edge(ERPicture p, int mb_x, int mb_y, int width, 
     
 
 }
+#define LEFT 0
+#define RIGHT 1
+#define TOP 2
+#define BOTTOM 3
+// get edge direction with maximum magnitude 
+// for each lossy mb, get closest macroblock with no error from 4 direction (left, right, bottom, top) 
+// from the closest macroblock get the biggest edge direction from the boundary pixels
+// example) left macroblock, look at the pixels at the right side boundary, get the largest edge direction
+static void get_dominant_edge(ERContext *s, int mb_width_idx, int mb_height_idx, int direction, float *result)
+{
+    float max_magnitude = 0;
+    float max_direction = 0;
+    int width = s->cur_pic.f->width;
+    if(direction == LEFT){
+        for(int i = 0 ; i < 16 ; i++){
+            if(s->cur_pic.edge_mag[(mb_height_idx * 16 + i) * width + mb_width_idx * 16] > max_magnitude){
+                max_magnitude = s->cur_pic.edge_mag[(mb_height_idx * 16 + i) * width + mb_width_idx * 16];
+                max_direction = s->cur_pic.edge_dir[(mb_height_idx * 16 + i) * width + mb_width_idx * 16];
+            }
+        }
+    } else if(direction == RIGHT){
+        for(int i = 0 ; i < 16 ; i++){
+            if(s->cur_pic.edge_mag[(mb_height_idx * 16 + i) * width + (mb_width_idx + 1) * 16 - 1] > max_magnitude){
+                max_magnitude = s->cur_pic.edge_mag[(mb_height_idx * 16 + i) * width + (mb_width_idx + 1) * 16 - 1];
+                max_direction = s->cur_pic.edge_dir[(mb_height_idx * 16 + i) * width + (mb_width_idx + 1) * 16 - 1];
+            }
+        }
+    } else if(direction == TOP){
+        for(int i = 0 ; i < 16 ; i++){
+            if(s->cur_pic.edge_mag[mb_height_idx * 16 * width + mb_width_idx  * 16 + i] > max_magnitude){
+                max_magnitude = s->cur_pic.edge_mag[mb_height_idx * 16 * width + mb_width_idx  * 16 + i];
+                max_direction = s->cur_pic.edge_dir[mb_height_idx * 16 * width + mb_width_idx  * 16 + i];
+            }
+            
+        }
 
+    } else if(direction == BOTTOM){
+        for(int i = 0 ; i < 16 ; i++){
+            if(s->cur_pic.edge_mag[((mb_height_idx+1)* 16 - 1) * width + mb_width_idx  * 16 + i] > max_magnitude){
+                max_magnitude = s->cur_pic.edge_mag[((mb_height_idx+1)* 16 - 1) * width + mb_width_idx  * 16 + i];
+                max_direction = s->cur_pic.edge_dir[((mb_height_idx+1)* 16 - 1) * width + mb_width_idx  * 16 + i];
+            }
+        }
+    }
+    result[0] = max_magnitude;
+    result[1] = max_direction;
+}
 
 static void edge_detection_picture(ERContext *s, int mb_width, int mb_height, int mb_stride)
 {
     int width = s->cur_pic.f->width; int height = s->cur_pic.f->height;
     s->cur_pic.edge_mag = av_malloc_array(width, height * sizeof(float));
     s->cur_pic.edge_dir = av_malloc_array(width, height * sizeof(float));
-    s->cur_pic.mb_edge_dir = av_malloc_array(mb_stride * 8, mb_height * sizeof(float));
-    s->cur_pic.mb_edge_mag = av_malloc_array(mb_stride * 8, mb_height * sizeof(float));
+    s->cur_pic.mb_edge_dir = av_malloc_array(mb_stride, mb_height * sizeof(float));
+    s->cur_pic.mb_edge_mag = av_malloc_array(mb_stride, mb_height * sizeof(float));
   
     int i, j, gx, gy;
 	int my[3][3] = {
@@ -508,9 +577,24 @@ static void edge_detection_picture(ERContext *s, int mb_width, int mb_height, in
 		{0, 0, 0},
 		{1, 2, 1}
 	};
+
+
+    int curr_mb_x, curr_mb_y, curr_mb_xy;
+    int error_j;
 	
 	for (i = 1; i < height - 1; i++) {
 		for (j = 1; j < width - 1; j++) {
+            curr_mb_x = j / 16;
+            curr_mb_y = i / 16;
+            curr_mb_xy = curr_mb_x + curr_mb_y * mb_stride;
+            error_j = s->error_status_table[curr_mb_xy];
+            if(error_j & ER_MB_ERROR){
+                s->cur_pic.edge_mag[i * width + j] = 0;
+                s->cur_pic.edge_dir[i * width + j] = 0;
+                continue;
+            }
+
+
 			gx = convolution(s, mx, i, j);
 			gy = convolution(s, my, i, j);
             s->cur_pic.edge_mag[i * width + j] = sqrt(gx*gx + gy*gy);
@@ -519,183 +603,78 @@ static void edge_detection_picture(ERContext *s, int mb_width, int mb_height, in
 	}
 
 
-    float max_mag = 0;
-    float max_dir = 0;
-    float mag = 0;
-    float mag_sum = 0;
-    float dir_sum = 0;
-    int curr_x, curr_y;
-    for(int i = 0 ; i < mb_height ; i++)
-    {
+    float curr_mag, curr_dir;
+    float curr_results[2];
+    for(int i = 0 ; i < mb_height ; i++){
+        curr_mag = 0;
+        curr_dir = 0;
         for(int j = 0 ; j < mb_width ; j++){
-            int mb_xy = j + mb_stride * i;
-            int edge_mb_xy = 8 * mb_xy;
-            //calculate_dominant_edge(p, j, i, p.f->width, p.f->height, &p.mb_edge_dir[edge_mb_xy], &p.mb_edge_mag[edge_mb_xy]);
-            // top-left
-            for(int k = 0 ; k < 8 ; k++){
-                curr_x = j * 16 + k;
-                curr_y = i * 16;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
-            }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 0] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 0] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 0] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 0] = dir_sum / mag_sum;
+            error_j = s->error_status_table[i * mb_stride + j];
+            if(!(error_j & ER_MB_ERROR ) ){
+                get_dominant_edge(s, j, i, RIGHT, curr_results);
+                curr_mag = curr_results[0];
+                curr_dir = curr_results[1];
             }
 
-            // top-right
-            for(int k = 8 ; k < 16 ; k++){
-                curr_x = j * 16 + k;
-                curr_y = i * 16 ;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
+            if(curr_mag > s->cur_pic.mb_edge_mag[i*mb_stride + j]){
+                s->cur_pic.mb_edge_mag[i*mb_stride + j] = curr_mag;
+                s->cur_pic.mb_edge_dir[i*mb_stride + j] = curr_dir;
             }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 1] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 1] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 1] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 1] = dir_sum / mag_sum;
-            }
-            
-            // bottom-left
-            for(int k = 0 ; k < 8 ; k++){
-                curr_x = j * 16 + k;
-                curr_y = (i+1) * 16 - 1;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
-            }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 2] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 2] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 2] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 2] = dir_sum / mag_sum;
-            }
-            
 
-            // bottom-right
-            for(int k = 8 ; k < 16 ; k++){
-                curr_x = j * 16 + k;
-                curr_y = (i+1) * 16 - 1;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
-            }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 3] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 3] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 3] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 3] = dir_sum / mag_sum;
-            }
-            
+        }
+    }
+    for(int i = 0 ; i < mb_height ; i++){
+        curr_mag = 0;
+        curr_dir = 0;
+        for(int j = mb_width-1 ; j >=0 ; j--){
 
-            // left-top
-            for(int k = 0 ; k < 8 ; k++){
-                curr_x = j * 16 ;
-                curr_y = i * 16 + k;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
+            error_j = s->error_status_table[i * mb_stride + j];
+            if(!(error_j & ER_MB_ERROR )) {
+                get_dominant_edge(s, j, i, LEFT, curr_results);
+                curr_mag = curr_results[0];
+                curr_dir = curr_results[1];
             }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 4] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 4] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 4] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 4] = dir_sum / mag_sum;
-            }
-            
 
-            // left-bottom
-            for(int k = 8 ; k < 16 ; k++){
-                curr_x = j * 16 ;
-                curr_y = i * 16 + k;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
+            if(curr_mag > s->cur_pic.mb_edge_mag[i*mb_stride + j]){
+                s->cur_pic.mb_edge_mag[i*mb_stride + j] = curr_mag;
+                s->cur_pic.mb_edge_dir[i*mb_stride + j] = curr_dir;
             }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 5] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 5] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 5] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 5] = dir_sum / mag_sum;
+        }
+    }
+    for(int j = 0 ; j < mb_width ; j++){
+        curr_mag = 0;
+        curr_dir = 0;
+        for(int i = 0 ; i < mb_height ; i++){
+            error_j = s->error_status_table[i * mb_stride + j];
+            if(!(error_j & ER_MB_ERROR )) {
+                get_dominant_edge(s, j, i, BOTTOM, curr_results);
+                curr_mag = curr_results[0];
+                curr_dir = curr_results[1];
             }
-            
-            
-            // right-top
-            for(int k = 0 ; k < 8 ; k++){
-                curr_x = (j+1) * 16 - 1;
-                curr_y = i * 16 + k;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
+
+            if(curr_mag > s->cur_pic.mb_edge_mag[i*mb_stride + j]){
+                s->cur_pic.mb_edge_mag[i*mb_stride + j] = curr_mag;
+                s->cur_pic.mb_edge_dir[i*mb_stride + j] = curr_dir;
             }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 6] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 6] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 6] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 6] = dir_sum / mag_sum;
+
+        }
+    }
+    for(int j = 0 ; j < mb_width ; j++){
+        curr_mag = 0;
+        curr_dir = 0;
+        for(int i = mb_height - 1 ; i >=0 ; i--){
+            error_j = s->error_status_table[i * mb_stride + j];
+            if(!(error_j & ER_MB_ERROR )) {
+                get_dominant_edge(s, j, i, TOP, curr_results);
+                curr_mag = curr_results[0];
+                curr_dir = curr_results[1];
             }
-            
-            
-            // right-bottom
-            for(int k = 8 ; k < 16 ; k++){
-                curr_x = (j+1) * 16 - 1;
-                curr_y = i * 16 + k;
-                if(curr_x < width && curr_y < height)
-                {
-                    mag = s->cur_pic.edge_mag[curr_y * width + curr_x];
-                    if(mag > max_mag) max_mag = mag;
-                    mag_sum += mag;
-                    dir_sum += s->cur_pic.edge_dir[curr_y * width + curr_x] * mag;
-                }
+
+            if(curr_mag > s->cur_pic.mb_edge_mag[i*mb_stride + j]){
+                s->cur_pic.mb_edge_mag[i*mb_stride + j] = curr_mag;
+                s->cur_pic.mb_edge_dir[i*mb_stride + j] = curr_dir;
             }
-            if(mag_sum == 0){
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 7] = 0;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 7] = 0;
-            } else{
-                s->cur_pic.mb_edge_mag[edge_mb_xy + 7] = max_mag;
-                s->cur_pic.mb_edge_dir[edge_mb_xy + 7] = dir_sum / mag_sum;
-            }
-            
+
         }
     }
 
@@ -2268,7 +2247,7 @@ void ff_er_frame_end(ERContext *s)
     guess_dc(s, s->dc_val[2], s->mb_width  , s->mb_height  , s->mb_stride, 0);
 
     //kjlee
-    guess_dominant_edge(s, s->mb_width, s->mb_height, s->mb_stride);
+    //guess_dominant_edge(s, s->mb_width, s->mb_height, s->mb_stride);
     if(temp ==0){
          
          char buf[1024];
@@ -2344,7 +2323,7 @@ void ff_er_frame_end(ERContext *s)
 
             //put_dc(s, dest_y, dest_cb, dest_cr, mb_x, mb_y);
             //kjlee
-            put_dc_edge(s, dest_y, dest_cb, dest_cr, mb_x, mb_y);
+            put_dc_edge(s, dest_y, dest_cb, dest_cr, mb_x, mb_y, s->mb_stride);
 
         }
     }

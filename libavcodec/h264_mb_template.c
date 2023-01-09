@@ -288,27 +288,33 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                 uint16_t residual_sum = 0;
                 uint8_t cb_before[8*8];
                 uint8_t cr_before[8*8];
-                for (int h = 0; h < 8; h++) {
-                    for (int w = 0; w < 8; w++) {
-                        cb_before[h*8+w] = dest[0][h*uvlinesize + w];
+                for (int row = 0; row < 8; row++) {
+                    for (int col = 0; col < 8; col++) {
+                        cb_before[row*8+col] = dest[0][row*uvlinesize + col];
                     }
                 }
-                for (int h = 0; h < 8; h++) {
-                    for (int w = 0; w < 8; w++) {
-                        cr_before[h*8+w] = dest[1][h*uvlinesize + w];
+                for (int row = 0; row < 8; row++) {
+                    for (int col = 0; col < 8; col++) {
+                        cr_before[row*8+col] = dest[1][row*uvlinesize + col];
                     }
                 }
+
                 h->h264dsp.h264_idct_add8(dest, block_offset,
                                           sl->mb, uvlinesize,
                                           sl->non_zero_count_cache);
-                for (int h = 0; h < 8; h++) {
-                    for (int w = 0; w < 8; w++) {
-                        residual_sum += abs(cb_before[h*8+w] - dest[0][h*uvlinesize + w]);
+                
+                uint8_t *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                uint8_t *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                for (int row = 0; row < 8; row++) {
+                    for (int col = 0; col < 8; col++) {
+                        residual_ptr_cb[row*h->width/2 + col] = abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
+                        residual_sum += abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
                     }
                 }
-                for (int h = 0; h < 8; h++) {
-                    for (int w = 0; w < 8; w++) {
-                        residual_sum += abs(cr_before[h*8+w] - dest[1][h*uvlinesize + w]);
+                for (int row = 0; row < 8; row++) {
+                    for (int col = 0; col < 8; col++) {
+                        residual_ptr_cr[row*h->width/2 + col] = abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
+                        residual_sum += abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
                     }
                 }
                 h->residual_sums[sl->mb_xy] += residual_sum;

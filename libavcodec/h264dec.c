@@ -971,7 +971,14 @@ static int h264_decode_frame(AVCodecContext *avctx, void *data,
     pict->intra_modes = h->intra_modes;
     memset(h->residual_sums, 0, sizeof(h->residual_sums));
     pict->residual_sums = h->residual_sums;
-
+    memset(h->residual_y, 0, sizeof(h->residual_y));
+    pict->residual_y = h->residual_y;
+    memset(h->residual_cb, 0, sizeof(h->residual_cb));
+    pict->residual_cb = h->residual_cb;
+    memset(h->residual_cr, 0, sizeof(h->residual_cr));
+    pict->residual_cr = h->residual_cr;
+    
+    
     ff_h264_unref_picture(h, &h->last_pic_for_ec);
 
     /* end of stream, output what is still in the buffers */

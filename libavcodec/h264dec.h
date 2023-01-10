@@ -566,6 +566,7 @@ typedef struct H264Context {
     uint8_t residual_y[1920*1080];
     uint8_t residual_cb[1920/2*1080/2];
     uint8_t residual_cr[1920/2*1080/2];
+    int lost_mbs[(120+1)*68]; // 0: correct, 1: no residual, 2: no MV, 3: no residual no mv
 } H264Context;
 
 extern const uint16_t ff_h264_mb_sizes[4];

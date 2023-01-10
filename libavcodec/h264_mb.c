@@ -710,7 +710,7 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                         before[row*4+2] = ptr[row*linesize+2];
                         before[row*4+3] = ptr[row*linesize+3];
                     }
-                    if (nnz) {
+                    if (nnz && (h->lost_mbs[sl->mb_xy] & 1) == 0) {
                         if (nnz == 1 && dctcoef_get(sl->mb, pixel_shift, i * 16 + p * 256))
                             idct_dc_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
                         else
@@ -769,6 +769,10 @@ static av_always_inline void hl_decode_mb_idct_luma(H264Context *h, H264SliceCon
     void (*idct_add)(uint8_t *dst, int16_t *block, int stride);
     int i;
     block_offset += 16 * p;
+
+    if (h->lost_mbs[sl->mb_xy] & 1) {
+        return;
+    }
 
     if (!IS_INTRA4x4(mb_type)) {
         uint16_t residual_sum = 0;

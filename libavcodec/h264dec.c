@@ -760,6 +760,7 @@ end:
 
         sl->er.ref_count = sl->ref_count[0];
 
+        memcpy(sl->er.lost_mbs, h->lost_mbs, sizeof(h->lost_mbs));
         ff_er_frame_end(&sl->er);
         if (use_last_pic)
             memset(&sl->ref_list[0][0], 0, sizeof(sl->ref_list[0][0]));
@@ -977,6 +978,8 @@ static int h264_decode_frame(AVCodecContext *avctx, void *data,
     pict->residual_cb = h->residual_cb;
     memset(h->residual_cr, 0, sizeof(h->residual_cr));
     pict->residual_cr = h->residual_cr;
+
+    memcpy(h->lost_mbs, avpkt->lost_mbs, sizeof(h->lost_mbs));
     
     
     ff_h264_unref_picture(h, &h->last_pic_for_ec);

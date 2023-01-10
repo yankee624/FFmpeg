@@ -926,6 +926,8 @@ void ff_er_frame_end(ERContext *s)
     int is_intra_likely;
     int size = s->b8_stride * 2 * s->mb_height;
 
+    s->error_count = 1; // force error concealment even if it seems like no error
+
     /* We do not support ER of field pictures yet,
      * though it should not crash if enabled. */
     if (!s->avctx->error_concealment || !atomic_load(&s->error_count)  ||
@@ -1126,6 +1128,17 @@ void ff_er_frame_end(ERContext *s)
     }
 #endif
 
+    for (i = 0; i < s->mb_num; i++) {
+        const int mb_xy = s->mb_index2xy[i];
+        s->error_status_table[mb_xy] = 0;
+        if (s->lost_mbs[mb_xy] & 1) {
+            s->error_status_table[mb_xy] |= (ER_DC_ERROR | ER_AC_ERROR);
+        }
+        if (s->lost_mbs[mb_xy] & 2) {
+            s->error_status_table[mb_xy] |= ER_MV_ERROR;
+        }
+    }
+
     dc_error = ac_error = mv_error = 0;
     for (i = 0; i < s->mb_num; i++) {
         const int mb_xy = s->mb_index2xy[i];
@@ -1167,41 +1180,41 @@ void ff_er_frame_end(ERContext *s)
         }
 
     /* handle inter blocks with damaged AC */
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
-        for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-            const int mb_xy   = mb_x + mb_y * s->mb_stride;
-            const int mb_type = s->cur_pic.mb_type[mb_xy];
-            const int dir     = !(s->last_pic.f && s->last_pic.f->data[0]);
-            const int mv_dir  = dir ? MV_DIR_BACKWARD : MV_DIR_FORWARD;
-            int mv_type;
+    // for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
+    //     for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+    //         const int mb_xy   = mb_x + mb_y * s->mb_stride;
+    //         const int mb_type = s->cur_pic.mb_type[mb_xy];
+    //         const int dir     = !(s->last_pic.f && s->last_pic.f->data[0]);
+    //         const int mv_dir  = dir ? MV_DIR_BACKWARD : MV_DIR_FORWARD;
+    //         int mv_type;
 
-            int error = s->error_status_table[mb_xy];
+    //         int error = s->error_status_table[mb_xy];
 
-            if (IS_INTRA(mb_type))
-                continue; // intra
-            if (error & ER_MV_ERROR)
-                continue; // inter with damaged MV
-            if (!(error & ER_AC_ERROR))
-                continue; // undamaged inter
+    //         if (IS_INTRA(mb_type))
+    //             continue; // intra
+    //         if (error & ER_MV_ERROR)
+    //             continue; // inter with damaged MV
+    //         if (!(error & ER_AC_ERROR))
+    //             continue; // undamaged inter
 
-            if (IS_8X8(mb_type)) {
-                int mb_index = mb_x * 2 + mb_y * 2 * s->b8_stride;
-                int j;
-                mv_type = MV_TYPE_8X8;
-                for (j = 0; j < 4; j++) {
-                    s->mv[0][j][0] = s->cur_pic.motion_val[dir][mb_index + (j & 1) + (j >> 1) * s->b8_stride][0];
-                    s->mv[0][j][1] = s->cur_pic.motion_val[dir][mb_index + (j & 1) + (j >> 1) * s->b8_stride][1];
-                }
-            } else {
-                mv_type     = MV_TYPE_16X16;
-                s->mv[0][0][0] = s->cur_pic.motion_val[dir][mb_x * 2 + mb_y * 2 * s->b8_stride][0];
-                s->mv[0][0][1] = s->cur_pic.motion_val[dir][mb_x * 2 + mb_y * 2 * s->b8_stride][1];
-            }
+    //         if (IS_8X8(mb_type)) {
+    //             int mb_index = mb_x * 2 + mb_y * 2 * s->b8_stride;
+    //             int j;
+    //             mv_type = MV_TYPE_8X8;
+    //             for (j = 0; j < 4; j++) {
+    //                 s->mv[0][j][0] = s->cur_pic.motion_val[dir][mb_index + (j & 1) + (j >> 1) * s->b8_stride][0];
+    //                 s->mv[0][j][1] = s->cur_pic.motion_val[dir][mb_index + (j & 1) + (j >> 1) * s->b8_stride][1];
+    //             }
+    //         } else {
+    //             mv_type     = MV_TYPE_16X16;
+    //             s->mv[0][0][0] = s->cur_pic.motion_val[dir][mb_x * 2 + mb_y * 2 * s->b8_stride][0];
+    //             s->mv[0][0][1] = s->cur_pic.motion_val[dir][mb_x * 2 + mb_y * 2 * s->b8_stride][1];
+    //         }
 
-            s->decode_mb(s->opaque, 0 /* FIXME H.264 partitioned slices need this set */,
-                         mv_dir, mv_type, &s->mv, mb_x, mb_y, 0, 0);
-        }
-    }
+    //         s->decode_mb(s->opaque, 0 /* FIXME H.264 partitioned slices need this set */,
+    //                      mv_dir, mv_type, &s->mv, mb_x, mb_y, 0, 0);
+    //     }
+    // }
 
     /* guess MVs */
     if (s->cur_pic.f->pict_type == AV_PICTURE_TYPE_B) {

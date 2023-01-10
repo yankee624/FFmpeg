@@ -667,6 +667,7 @@ int av_packet_ref(AVPacket *dst, const AVPacket *src)
     }
 
     dst->size = src->size;
+    memcpy(dst->lost_mbs, src->lost_mbs, sizeof(dst->lost_mbs));
 
     return 0;
 fail:

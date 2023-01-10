@@ -299,10 +299,11 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                     }
                 }
 
-                h->h264dsp.h264_idct_add8(dest, block_offset,
-                                          sl->mb, uvlinesize,
-                                          sl->non_zero_count_cache);
-                
+                if ((h->lost_mbs[sl->mb_xy] & 1) == 0) {
+                    h->h264dsp.h264_idct_add8(dest, block_offset,
+                                            sl->mb, uvlinesize,
+                                            sl->non_zero_count_cache);
+                }
                 uint8_t *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
                 uint8_t *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
                 for (int row = 0; row < 8; row++) {

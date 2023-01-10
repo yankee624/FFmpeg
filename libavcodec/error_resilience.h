@@ -87,6 +87,7 @@ typedef struct ERContext {
                       int (*mv)[2][4][2],
                       int mb_x, int mb_y, int mb_intra, int mb_skipped);
     void *opaque;
+    int lost_mbs[(120+1)*68];
 } ERContext;
 
 void ff_er_frame_start(ERContext *s);

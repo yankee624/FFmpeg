@@ -400,12 +400,35 @@ static int compare_of(const void *of_ptr1, const void *of_ptr2) {
     return (mx1*mx1+my1*my1) - (mx2*mx2+my2*my2);
 }
 
+static uint8_t** get_mask_array(char *dirname, ERContext *s) {
+    char filename[256];
+    sprintf(filename, "%s/%s/%06d.pgm", dirname, s->avctx->vid_id, s->avctx->frame_number);
+    FILE *mask_file = fopen(filename, "rb");
+    if (mask_file == 0) {
+        printf("Couldn't open file: %s\n", filename);
+        exit(1);
+    }
+    int width, height;
+    fscanf(mask_file, "P5\n%d %d\n255\n", &width, &height);
+
+    uint8_t **mask_array = malloc(height * sizeof(uint8_t*));
+    for (int y = 0; y < height; y++) {
+        mask_array[y] = malloc(width * sizeof(uint8_t));
+    }
+
+    for (int y=0; y<height; y++) {
+        fread(mask_array[y], 1, width, mask_file);
+    }
+
+    return mask_array;
+}
+
 static float (**get_of_array(char *of_type_str, ERContext *s, int *mv_width, int *mv_height, int *granularity))[2] {
-    if (strcmp(of_type_str, "of-raft") == 0) {
+    if (strstr(of_type_str, "of-raft")) {
         *granularity = 1;
-    } else if (strcmp(of_type_str, "of-flownet2css") == 0) {
+    } else if (strcmp(of_type_str, "of-flownet2css")) {
         *granularity = 1;
-    } else if (strcmp(of_type_str, "of-mv") == 0) {
+    } else if (strcmp(of_type_str, "of-mv")) {
         *granularity = 8;
     }
         
@@ -490,163 +513,183 @@ static void guess_mv(ERContext *s)
     fixed          = (uint8_t *)(next_blocklist + s->mb_stride * s->mb_height);
 
     set_mv_strides(s, &mot_step, &mot_stride);
+    // if ((s->avctx->error_concealment & (FF_EC_USE_OF | FF_EC_USE_GTMV) && s->cur_pic.f->pict_type != AV_PICTURE_TYPE_I)) {
 
-    if ((s->avctx->error_concealment & (FF_EC_USE_OF | FF_EC_USE_GTMV) && s->cur_pic.f->pict_type != AV_PICTURE_TYPE_I)) {
-
-        int of_width1, of_height1, of_granularity1;
-        float (**of_array1)[2] = get_of_array("of-mv", s, &of_width1, &of_height1, &of_granularity1);
+    //     int of_width1, of_height1, of_granularity1;
+    //     float (**of_array1)[2] = NULL;
+    //     if (s->avctx->error_concealment & FF_EC_USE_GTMV) {
+    //         of_array1 = get_of_array("of-mv", s, &of_width1, &of_height1, &of_granularity1);
+    //     }
         
-        int of_width2, of_height2, of_granularity2;
-        float (**of_array2)[2] = get_of_array("of-raft", s, &of_width2, &of_height2, &of_granularity2);
+    //     int of_width2, of_height2, of_granularity2;
+    //     float (**of_array2)[2] = get_of_array("of-raft-bw", s, &of_width2, &of_height2, &of_granularity2);
 
-        int mv_width, mv_height, granularity;
-        float (**mv_array)[2];
+    //     uint8_t **of_mask_array = get_mask_array("/udp/udp_docker/kitti-mot/of-raft-bw-mask", s);
 
-        for (mb_y = 0; mb_y < mb_height; mb_y++) {
-            for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                const int mb_xy = mb_x + mb_y * s->mb_stride;
+    //     int mv_width, mv_height, granularity;
+    //     float (**mv_array)[2];
 
-                if (IS_INTRA(s->cur_pic.mb_type[mb_xy]))
-                    continue;
-                if (!(s->error_status_table[mb_xy] & ER_MV_ERROR))
-                    continue;
+    //     for (mb_y = 0; mb_y < mb_height; mb_y++) {
+    //         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+    //             const int mb_xy = mb_x + mb_y * s->mb_stride;
+
+    //             if (IS_INTRA(s->cur_pic.mb_type[mb_xy]))
+    //                 continue;
+    //             if (!(s->error_status_table[mb_xy] & ER_MV_ERROR))
+    //                 continue;
                 
-                // Warping (MV, OF)
-                int *linesize = s->cur_pic.f->linesize;
-                uint8_t *dest_y  = s->cur_pic.f->data[0];
-                uint8_t *dest_cb = s->cur_pic.f->data[1];
-                uint8_t *dest_cr = s->cur_pic.f->data[2];
+    //             // Warping (MV, OF)
+    //             int *linesize = s->cur_pic.f->linesize;
+    //             uint8_t *dest_y  = s->cur_pic.f->data[0];
+    //             uint8_t *dest_cb = s->cur_pic.f->data[1];
+    //             uint8_t *dest_cr = s->cur_pic.f->data[2];
                 
-                int *linesize_prev = s->last_pic.f->linesize;
-                uint8_t *src_y  = s->last_pic.f->data[0];
-                uint8_t *src_cb = s->last_pic.f->data[1];
-                uint8_t *src_cr = s->last_pic.f->data[2];
+    //             int *linesize_prev = s->last_pic.f->linesize;
+    //             uint8_t *src_y  = s->last_pic.f->data[0];
+    //             uint8_t *src_cb = s->last_pic.f->data[1];
+    //             uint8_t *src_cr = s->last_pic.f->data[2];
 
-                if (s->avctx->error_concealment & FF_EC_USE_GTMV && !isnan(of_array1[mb_y*16/of_granularity1][mb_x*16/of_granularity1][0])) {
-                    mv_array = of_array1;
-                    mv_width = of_width1;
-                    mv_height = of_height1;
-                    granularity = of_granularity1;
-                } else {
-                    // s->cur_pic.mb_type[mb_xy] = MB_TYPE_INTRA16x16;
-                    continue;
-                    mv_array = of_array2;
-                    mv_width = of_width2;
-                    mv_height = of_height2;
-                    granularity = of_granularity2;
-                }
+    //             if (s->avctx->error_concealment & FF_EC_USE_GTMV && !isnan(of_array1[mb_y*16/of_granularity1][mb_x*16/of_granularity1][0])) {
+    //                 mv_array = of_array1;
+    //                 mv_width = of_width1;
+    //                 mv_height = of_height1;
+    //                 granularity = of_granularity1;
+    //             } else {
+    //                 // s->cur_pic.mb_type[mb_xy] = MB_TYPE_INTRA16x16;
+    //                 // continue;
+    //                 mv_array = of_array2;
+    //                 mv_width = of_width2;
+    //                 mv_height = of_height2;
+    //                 granularity = of_granularity2;
+    //             }
 
-                for (int y = 0; y < 16/granularity; y++) {
-                    for (int x = 0; x < 16/granularity; x++) {
-                        int mv_x = mb_x*16/granularity + x;
-                        int mv_y = mb_y*16/granularity + y;
-                        if (mv_x >= mv_width || mv_y >= mv_height) {
-                            continue;
-                        }
-                        s->error_status_table[mb_xy] = 0;
-                        // FIXME: save motion vector in more fine granularity (8x8)
-                        const int mot_index= (mb_x + mb_y*mot_stride) * mot_step;
-                        for (int i = 0; i < mot_step; i++) {
-                            for (int j = 0; j < mot_step; j++) {
-                                s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][0] = mv_array[mv_y][mv_x][0];
-                                s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][1] = mv_array[mv_y][mv_x][1];
-                            }
-                        }
+    //             for (int y = 0; y < 16/granularity; y++) {
+    //                 for (int x = 0; x < 16/granularity; x++) {
+    //                     int mv_x = mb_x*16/granularity + x;
+    //                     int mv_y = mb_y*16/granularity + y;
+    //                     if (mv_x >= mv_width || mv_y >= mv_height) {
+    //                         continue;
+    //                     }
+    //                     s->error_status_table[mb_xy] = 0;
+    //                     // FIXME: save motion vector in more fine granularity (8x8)
+    //                     const int mot_index= (mb_x + mb_y*mot_stride) * mot_step;
+    //                     for (int i = 0; i < mot_step; i++) {
+    //                         for (int j = 0; j < mot_step; j++) {
+    //                             s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][0] = mv_array[mv_y][mv_x][0];
+    //                             s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][1] = mv_array[mv_y][mv_x][1];
+    //                         }
+    //                     }
 
 
-                        for (int yy = 0; yy < granularity; yy++) {
-                            for (int xx = 0; xx < granularity; xx++) {
-                                int d_x = mb_x*16 + x*granularity + xx;
-                                int d_y = mb_y*16 + y*granularity + yy;
-                                int s_x = d_x + mv_array[mv_y][mv_x][0];
-                                int s_y = d_y + mv_array[mv_y][mv_x][1];
-                                if (s_x < 0) s_x = 0;
-                                else if (s_x >= mb_width*16) s_x = mb_width*16-1;
-                                if (s_y < 0) s_y = 0;
-                                else if (s_y >= mb_height*16) s_y = mb_height*16-1;
-                                dest_y[d_x + d_y * linesize[0]] = src_y[s_x + s_y * linesize_prev[0]];
-                            }
-                        }
-                    }
-                }
+    //                     for (int yy = 0; yy < granularity; yy++) {
+    //                         for (int xx = 0; xx < granularity; xx++) {
+    //                             int d_x = mb_x*16 + x*granularity + xx;
+    //                             int d_y = mb_y*16 + y*granularity + yy;
+    //                             if (of_mask_array[d_y][d_x] == 0) {
+    //                                 dest_y[d_x + d_y * linesize[0]] = 0;
+    //                                 continue;
+    //                             }
+    //                             int s_x = d_x + mv_array[mv_y][mv_x][0];
+    //                             int s_y = d_y + mv_array[mv_y][mv_x][1];
+    //                             if (s_x < 0) s_x = 0;
+    //                             else if (s_x >= mb_width*16) s_x = mb_width*16-1;
+    //                             if (s_y < 0) s_y = 0;
+    //                             else if (s_y >= mb_height*16) s_y = mb_height*16-1;
+    //                             dest_y[d_x + d_y * linesize[0]] = src_y[s_x + s_y * linesize_prev[0]];
+    //                         }
+    //                     }
+    //                 }
+    //             }
 
-                for (int y = 0; y < 8/granularity; y++) {
-                    for (int x = 0; x < 8/granularity; x++) {
-                        int mv_x = mb_x*16/granularity + 2*x; // FIXME: 2*x? 2*x+1?
-                        int mv_y = mb_y*16/granularity + 2*y;
-                        if (mv_x >= mv_width || mv_y >= mv_height) {
-                            continue;
-                        }
-                        for (int yy = 0; yy < granularity; yy++) {
-                            for (int xx = 0; xx < granularity; xx++) {
-                                int d_x = mb_x*8 + x*granularity + xx;
-                                int d_y = mb_y*8 + y*granularity + yy;
-                                int s_x = d_x + mv_array[mv_y][mv_x][0];
-                                int s_y = d_y + mv_array[mv_y][mv_x][1];
-                                if (s_x < 0) s_x = 0;
-                                else if (s_x >= mb_width*8) s_x = mb_width*8-1;
-                                if (s_y < 0) s_y = 0;
-                                else if (s_y >= mb_height*8) s_y = mb_height*8-1;
-                                dest_cb[d_x + d_y * linesize[1]] = src_cb[s_x + s_y * linesize_prev[1]];
-                                dest_cr[d_x + d_y * linesize[2]] = src_cr[s_x + s_y * linesize_prev[2]];
-                            }
-                        }
-                    }
-                }
+    //             for (int y = 0; y < 8/granularity; y++) {
+    //                 for (int x = 0; x < 8/granularity; x++) {
+    //                     int mv_x = mb_x*16/granularity + 2*x; // FIXME: 2*x? 2*x+1?
+    //                     int mv_y = mb_y*16/granularity + 2*y;
+    //                     if (mv_x >= mv_width || mv_y >= mv_height) {
+    //                         continue;
+    //                     }
+    //                     for (int yy = 0; yy < granularity; yy++) {
+    //                         for (int xx = 0; xx < granularity; xx++) {
+    //                             int d_x = mb_x*8 + x*granularity + xx;
+    //                             int d_y = mb_y*8 + y*granularity + yy;
+    //                             if (of_mask_array[2*d_y][2*d_x] == 0) {
+    //                                 dest_cb[d_x + d_y * linesize[1]] = 0;
+    //                                 dest_cr[d_x + d_y * linesize[2]] = 0;
+    //                                 continue;
+    //                             }
+    //                             int s_x = d_x + mv_array[mv_y][mv_x][0];
+    //                             int s_y = d_y + mv_array[mv_y][mv_x][1];
+    //                             if (s_x < 0) s_x = 0;
+    //                             else if (s_x >= mb_width*8) s_x = mb_width*8-1;
+    //                             if (s_y < 0) s_y = 0;
+    //                             else if (s_y >= mb_height*8) s_y = mb_height*8-1;
+    //                             dest_cb[d_x + d_y * linesize[1]] = src_cb[s_x + s_y * linesize_prev[1]];
+    //                             dest_cr[d_x + d_y * linesize[2]] = src_cr[s_x + s_y * linesize_prev[2]];
+    //                         }
+    //                     }
+    //                 }
+    //             }
 
-                // Motion compensation (OF, MV)
-                // float motion_x = 0, motion_y = 0;
-                // int cnt = 0;
-                // for (int y = 0; y < 16 / granularity; y++) {
-                //     for (int x = 0; x < 16 / granularity; x++) {
-                //         int mv_y = mb_y*(16/granularity) + y;
-                //         int mv_x = mb_x*(16/granularity) + x;
-                //         if (mv_y >= mv_height || mv_x >= mv_width) {
-                //             continue;
-                //         } 
-                //         if (isnan(mv_array[mv_y][mv_x][0])) {
-                //             // intra
-                //             continue;
-                //         }
-                //         motion_x += mv_array[mv_y][mv_x][0];
-                //         motion_y += mv_array[mv_y][mv_x][1];
-                //         cnt++;
-                //     }
-                // }
-                // if (cnt == 0) {
-                //     // TODO: Intra MB -> change MB type to intra and use guess_dc
-                //     printf("Intra MB -> using MV 0,0\n");
-                //     cnt = 1;
-                // }
-                // motion_x /= cnt;
-                // motion_y /= cnt;
-                // s->mv[0][0][0] = (int) motion_x;
-                // s->mv[0][0][1] = (int) motion_y;
+    //             // Motion compensation (OF, MV)
+    //             // float motion_x = 0, motion_y = 0;
+    //             // int cnt = 0;
+    //             // for (int y = 0; y < 16 / granularity; y++) {
+    //             //     for (int x = 0; x < 16 / granularity; x++) {
+    //             //         int mv_y = mb_y*(16/granularity) + y;
+    //             //         int mv_x = mb_x*(16/granularity) + x;
+    //             //         if (mv_y >= mv_height || mv_x >= mv_width) {
+    //             //             continue;
+    //             //         } 
+    //             //         if (isnan(mv_array[mv_y][mv_x][0])) {
+    //             //             // intra
+    //             //             continue;
+    //             //         }
+    //             //         motion_x += mv_array[mv_y][mv_x][0];
+    //             //         motion_y += mv_array[mv_y][mv_x][1];
+    //             //         cnt++;
+    //             //     }
+    //             // }
+    //             // if (cnt == 0) {
+    //             //     // TODO: Intra MB -> change MB type to intra and use guess_dc
+    //             //     printf("Intra MB -> using MV 0,0\n");
+    //             //     cnt = 1;
+    //             // }
+    //             // motion_x /= cnt;
+    //             // motion_y /= cnt;
+    //             // s->mv[0][0][0] = (int) motion_x;
+    //             // s->mv[0][0][1] = (int) motion_y;
 
-                // const int mot_index= (mb_x + mb_y*mot_stride) * mot_step;
-                // for (int i = 0; i < mot_step; i++) {
-                //     for (int j = 0; j < mot_step; j++) {
-                //         s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][0] = s->mv[0][0][0];
-                //         s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][1] = s->mv[0][0][1];
-                //     }
-                // }
+    //             // const int mot_index= (mb_x + mb_y*mot_stride) * mot_step;
+    //             // for (int i = 0; i < mot_step; i++) {
+    //             //     for (int j = 0; j < mot_step; j++) {
+    //             //         s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][0] = s->mv[0][0][0];
+    //             //         s->cur_pic.motion_val[0][mot_index + i + j * mot_stride][1] = s->mv[0][0][1];
+    //             //     }
+    //             // }
 
-                // // TODO: make MV_TYPE 8x8
-                // s->decode_mb(s->opaque, 0, MV_DIR_FORWARD, MV_TYPE_16X16, &s->mv,
-                //              mb_x, mb_y, 0, 0);
-            }
-        }
+    //             // // TODO: make MV_TYPE 8x8
+    //             // s->decode_mb(s->opaque, 0, MV_DIR_FORWARD, MV_TYPE_16X16, &s->mv,
+    //             //              mb_x, mb_y, 0, 0);
+    //         }
+    //     }
 
-        for (int of_y = 0; of_y < of_height1; of_y++) {
-            free(of_array1[of_y]);
-        }
-        free(of_array1);
+    //     if (of_array1) {
+    //         for (int of_y = 0; of_y < of_height1; of_y++) {
+    //             free(of_array1[of_y]);
+    //         }
+    //         free(of_array1);
+    //     }
+        
+    //     for (int of_y = 0; of_y < of_height2; of_y++) {
+    //         free(of_array2[of_y]);
+    //     }
+    //     free(of_array2);
 
-        for (int of_y = 0; of_y < of_height2; of_y++) {
-            free(of_array2[of_y]);
-        }
-        free(of_array2);
-    }
+    //     for (int y = 0; y < of_height2; y++) {
+    //         free(of_mask_array[y]);
+    //     }
+    //     free(of_mask_array);
+    // }
 
 
 
@@ -762,7 +805,7 @@ static void guess_mv(ERContext *s)
                 none_left = 0;
                 pred_count = 0;
                 mot_index  = (mb_x + mb_y * mot_stride) * mot_step;
-                printf("bma %d %d intra? %d\n", mb_y, mb_x, IS_INTRA(s->cur_pic.mb_type[mb_xy]));
+                // printf("bma %d %d intra? %d\n", mb_y, mb_x, IS_INTRA(s->cur_pic.mb_type[mb_xy]));
 
                 int pred_idx_left = -1, pred_idx_right = -1, pred_idx_up = -1, pred_idx_down = -1;
                 /* left */

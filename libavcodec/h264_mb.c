@@ -673,7 +673,7 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                 h->width*8+8, h->width*8+12, h->width*12+8, h->width*12+12};
             for (i = 0; i < 16; i++) {
                 uint8_t *const ptr = dest_y + block_offset[i];
-                uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16] + pixel_offset[i];
+                // uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16] + pixel_offset[i];
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
                 // printf("intra4x4 %d\n", dir);
 
@@ -703,13 +703,13 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                     h->hpc.pred4x4[dir](ptr, topright, linesize);
                     nnz = sl->non_zero_count_cache[scan8[i + p * 16]];
 
-                    uint8_t before[16];
-                    for (int row = 0; row < 4; row++) {
-                        before[row*4] = ptr[row*linesize];
-                        before[row*4+1] = ptr[row*linesize+1];
-                        before[row*4+2] = ptr[row*linesize+2];
-                        before[row*4+3] = ptr[row*linesize+3];
-                    }
+                    // uint8_t before[16];
+                    // for (int row = 0; row < 4; row++) {
+                    //     before[row*4] = ptr[row*linesize];
+                    //     before[row*4+1] = ptr[row*linesize+1];
+                    //     before[row*4+2] = ptr[row*linesize+2];
+                    //     before[row*4+3] = ptr[row*linesize+3];
+                    // }
                     if (nnz) {
                         if (nnz == 1 && dctcoef_get(sl->mb, pixel_shift, i * 16 + p * 256))
                             idct_dc_add(ptr, sl->mb + (i * 16 + p * 256 << pixel_shift), linesize);
@@ -718,18 +718,18 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                     } else {
                         // sometimes reach here
                     }
-                    for (int row = 0; row < 4; row++) {
-                        residual_ptr[row*h->width]   = abs(before[row*4] - ptr[row*linesize]);
-                        residual_ptr[row*h->width+1] = abs(before[row*4+1] - ptr[row*linesize+1]);
-                        residual_ptr[row*h->width+2] = abs(before[row*4+2] - ptr[row*linesize+2]);
-                        residual_ptr[row*h->width+3] = abs(before[row*4+3] - ptr[row*linesize+3]);
+                    // for (int row = 0; row < 4; row++) {
+                    //     residual_ptr[row*h->width]   = abs(before[row*4] - ptr[row*linesize]);
+                    //     residual_ptr[row*h->width+1] = abs(before[row*4+1] - ptr[row*linesize+1]);
+                    //     residual_ptr[row*h->width+2] = abs(before[row*4+2] - ptr[row*linesize+2]);
+                    //     residual_ptr[row*h->width+3] = abs(before[row*4+3] - ptr[row*linesize+3]);
 
-                        residual_sum += abs(before[row*4] - ptr[row*linesize]);
-                        residual_sum += abs(before[row*4+1] - ptr[row*linesize+1]);
-                        residual_sum += abs(before[row*4+2] - ptr[row*linesize+2]);
-                        residual_sum += abs(before[row*4+3] - ptr[row*linesize+3]);
-                    }
-                    h->residual_sums[sl->mb_xy] += residual_sum;
+                    //     residual_sum += abs(before[row*4] - ptr[row*linesize]);
+                    //     residual_sum += abs(before[row*4+1] - ptr[row*linesize+1]);
+                    //     residual_sum += abs(before[row*4+2] - ptr[row*linesize+2]);
+                    //     residual_sum += abs(before[row*4+3] - ptr[row*linesize+3]);
+                    // }
+                    // h->residual_sums[sl->mb_xy] += residual_sum;
                 }
             }
         }
@@ -771,13 +771,13 @@ static av_always_inline void hl_decode_mb_idct_luma(H264Context *h, H264SliceCon
     block_offset += 16 * p;
 
     if (!IS_INTRA4x4(mb_type)) {
-        uint16_t residual_sum = 0;
-        uint8_t before[16*16];
-        for (int row = 0; row < 16; row++) {
-            for (int col = 0; col < 16; col++) {
-                before[row*16+col] = dest_y[row*linesize + col];
-            }
-        }
+        // uint16_t residual_sum = 0;
+        // uint8_t before[16*16];
+        // for (int row = 0; row < 16; row++) {
+        //     for (int col = 0; col < 16; col++) {
+        //         before[row*16+col] = dest_y[row*linesize + col];
+        //     }
+        // }
 
         if (IS_INTRA16x16(mb_type)) {
             if (transform_bypass) {
@@ -827,14 +827,14 @@ static av_always_inline void hl_decode_mb_idct_luma(H264Context *h, H264SliceCon
             }
         }
 
-        uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16];
-        for (int row = 0; row < 16; row++) {
-            for (int col = 0; col < 16; col++) {
-                residual_ptr[row*h->width + col] = abs(before[row*16+col] - dest_y[row*linesize + col]);
-                residual_sum += abs(before[row*16+col] - dest_y[row*linesize + col]);
-            }
-        }
-        h->residual_sums[sl->mb_xy] += residual_sum;
+        // uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16];
+        // for (int row = 0; row < 16; row++) {
+        //     for (int col = 0; col < 16; col++) {
+        //         residual_ptr[row*h->width + col] = abs(before[row*16+col] - dest_y[row*linesize + col]);
+        //         residual_sum += abs(before[row*16+col] - dest_y[row*linesize + col]);
+        //     }
+        // }
+        // h->residual_sums[sl->mb_xy] += residual_sum;
     }
 }
 

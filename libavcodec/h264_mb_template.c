@@ -152,48 +152,48 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
         }
     } else {
         if (IS_INTRA(mb_type)) {
-            h->intra_modes[sl->mb_xy] = 0;
-            if (IS_INTRA4x4(mb_type)) {
-                for (int i = 0; i < 16; i++) {
-                    if (sl->intra4x4_pred_mode_cache[scan8[i]] >= 12) {
-                        printf("Error: Invalid intra4x4 pred mode\n");
-                    }  
-                }
-                // if 0 1 4 5 top (0, 2, 3, 4, 5, 6, 7, 10)
-                if (
-                    (sl->intra4x4_pred_mode_cache[scan8[0]] != 1 && sl->intra4x4_pred_mode_cache[scan8[0]] != 8 && sl->intra4x4_pred_mode_cache[scan8[0]] != 9 && sl->intra4x4_pred_mode_cache[scan8[0]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[1]] != 1 && sl->intra4x4_pred_mode_cache[scan8[1]] != 8 && sl->intra4x4_pred_mode_cache[scan8[1]] != 9 && sl->intra4x4_pred_mode_cache[scan8[1]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[4]] != 1 && sl->intra4x4_pred_mode_cache[scan8[4]] != 8 && sl->intra4x4_pred_mode_cache[scan8[4]] != 9 && sl->intra4x4_pred_mode_cache[scan8[4]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[5]] != 1 && sl->intra4x4_pred_mode_cache[scan8[5]] != 8 && sl->intra4x4_pred_mode_cache[scan8[5]] != 9 && sl->intra4x4_pred_mode_cache[scan8[5]] != 11)
-                ) {
-                    h->intra_modes[sl->mb_xy] |= 1;
-                }
-                // if 5 top-right (3, 7)
-                if (sl->intra4x4_pred_mode_cache[scan8[5]] == 3 || sl->intra4x4_pred_mode_cache[scan8[5]] == 7) {
-                    h->intra_modes[sl->mb_xy] |= 4;
-                }
-                // if 0 2 8 10 left (1, 2, 4, 5, 6, 8, 9)
-                if (
-                    (sl->intra4x4_pred_mode_cache[scan8[0]] != 0 && sl->intra4x4_pred_mode_cache[scan8[0]] != 3 && sl->intra4x4_pred_mode_cache[scan8[0]] != 7 && sl->intra4x4_pred_mode_cache[scan8[0]] != 10 && sl->intra4x4_pred_mode_cache[scan8[0]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[2]] != 0 && sl->intra4x4_pred_mode_cache[scan8[2]] != 3 && sl->intra4x4_pred_mode_cache[scan8[2]] != 7 && sl->intra4x4_pred_mode_cache[scan8[2]] != 10 && sl->intra4x4_pred_mode_cache[scan8[2]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[8]] != 0 && sl->intra4x4_pred_mode_cache[scan8[8]] != 3 && sl->intra4x4_pred_mode_cache[scan8[8]] != 7 && sl->intra4x4_pred_mode_cache[scan8[8]] != 10 && sl->intra4x4_pred_mode_cache[scan8[8]] != 11) ||
-                    (sl->intra4x4_pred_mode_cache[scan8[10]] != 0 && sl->intra4x4_pred_mode_cache[scan8[10]] != 3 && sl->intra4x4_pred_mode_cache[scan8[10]] != 7 && sl->intra4x4_pred_mode_cache[scan8[10]] != 10 && sl->intra4x4_pred_mode_cache[scan8[10]] != 11)
-                ) {
-                    h->intra_modes[sl->mb_xy] |= 2;
-                }
-            } else if (IS_INTRA16x16(mb_type)) {
-                if (sl->intra16x16_pred_mode >= 7) {
-                    printf("Error: Invalid intra16x16 pred mode\n");
-                }
-                // top (0, 2, 3, 5)
-                else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 2 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 5) {
-                    h->intra_modes[sl->mb_xy] |= 1;
-                }
-                // left (0, 1, 3, 4)
-                else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 1 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 4) {
-                    h->intra_modes[sl->mb_xy] |= 2;
-                }
-            }
+            // h->intra_modes[sl->mb_xy] = 0;
+            // if (IS_INTRA4x4(mb_type)) {
+            //     for (int i = 0; i < 16; i++) {
+            //         if (sl->intra4x4_pred_mode_cache[scan8[i]] >= 12) {
+            //             printf("Error: Invalid intra4x4 pred mode\n");
+            //         }  
+            //     }
+            //     // if 0 1 4 5 top (0, 2, 3, 4, 5, 6, 7, 10)
+            //     if (
+            //         (sl->intra4x4_pred_mode_cache[scan8[0]] != 1 && sl->intra4x4_pred_mode_cache[scan8[0]] != 8 && sl->intra4x4_pred_mode_cache[scan8[0]] != 9 && sl->intra4x4_pred_mode_cache[scan8[0]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[1]] != 1 && sl->intra4x4_pred_mode_cache[scan8[1]] != 8 && sl->intra4x4_pred_mode_cache[scan8[1]] != 9 && sl->intra4x4_pred_mode_cache[scan8[1]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[4]] != 1 && sl->intra4x4_pred_mode_cache[scan8[4]] != 8 && sl->intra4x4_pred_mode_cache[scan8[4]] != 9 && sl->intra4x4_pred_mode_cache[scan8[4]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[5]] != 1 && sl->intra4x4_pred_mode_cache[scan8[5]] != 8 && sl->intra4x4_pred_mode_cache[scan8[5]] != 9 && sl->intra4x4_pred_mode_cache[scan8[5]] != 11)
+            //     ) {
+            //         h->intra_modes[sl->mb_xy] |= 1;
+            //     }
+            //     // if 5 top-right (3, 7)
+            //     if (sl->intra4x4_pred_mode_cache[scan8[5]] == 3 || sl->intra4x4_pred_mode_cache[scan8[5]] == 7) {
+            //         h->intra_modes[sl->mb_xy] |= 4;
+            //     }
+            //     // if 0 2 8 10 left (1, 2, 4, 5, 6, 8, 9)
+            //     if (
+            //         (sl->intra4x4_pred_mode_cache[scan8[0]] != 0 && sl->intra4x4_pred_mode_cache[scan8[0]] != 3 && sl->intra4x4_pred_mode_cache[scan8[0]] != 7 && sl->intra4x4_pred_mode_cache[scan8[0]] != 10 && sl->intra4x4_pred_mode_cache[scan8[0]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[2]] != 0 && sl->intra4x4_pred_mode_cache[scan8[2]] != 3 && sl->intra4x4_pred_mode_cache[scan8[2]] != 7 && sl->intra4x4_pred_mode_cache[scan8[2]] != 10 && sl->intra4x4_pred_mode_cache[scan8[2]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[8]] != 0 && sl->intra4x4_pred_mode_cache[scan8[8]] != 3 && sl->intra4x4_pred_mode_cache[scan8[8]] != 7 && sl->intra4x4_pred_mode_cache[scan8[8]] != 10 && sl->intra4x4_pred_mode_cache[scan8[8]] != 11) ||
+            //         (sl->intra4x4_pred_mode_cache[scan8[10]] != 0 && sl->intra4x4_pred_mode_cache[scan8[10]] != 3 && sl->intra4x4_pred_mode_cache[scan8[10]] != 7 && sl->intra4x4_pred_mode_cache[scan8[10]] != 10 && sl->intra4x4_pred_mode_cache[scan8[10]] != 11)
+            //     ) {
+            //         h->intra_modes[sl->mb_xy] |= 2;
+            //     }
+            // } else if (IS_INTRA16x16(mb_type)) {
+            //     if (sl->intra16x16_pred_mode >= 7) {
+            //         printf("Error: Invalid intra16x16 pred mode\n");
+            //     }
+            //     // top (0, 2, 3, 5)
+            //     else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 2 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 5) {
+            //         h->intra_modes[sl->mb_xy] |= 1;
+            //     }
+            //     // left (0, 1, 3, 4)
+            //     else if (sl->intra16x16_pred_mode == 0 || sl->intra16x16_pred_mode == 1 || sl->intra16x16_pred_mode == 3 || sl->intra16x16_pred_mode == 4) {
+            //         h->intra_modes[sl->mb_xy] |= 2;
+            //     }
+            // }
 
             if (sl->deblocking_filter)
                 xchg_mb_border(h, sl, dest_y, dest_cb, dest_cr, linesize,
@@ -285,39 +285,39 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                     h->h264dsp.h264_chroma_dc_dequant_idct(sl->mb + (16 * 16 * 2 << PIXEL_SHIFT),
                                                            h->ps.pps->dequant4_coeff[IS_INTRA(mb_type) ? 2 : 5][qp[1]][0]);
                 
-                uint16_t residual_sum = 0;
-                uint8_t cb_before[8*8];
-                uint8_t cr_before[8*8];
-                for (int row = 0; row < 8; row++) {
-                    for (int col = 0; col < 8; col++) {
-                        cb_before[row*8+col] = dest[0][row*uvlinesize + col];
-                    }
-                }
-                for (int row = 0; row < 8; row++) {
-                    for (int col = 0; col < 8; col++) {
-                        cr_before[row*8+col] = dest[1][row*uvlinesize + col];
-                    }
-                }
+                // uint16_t residual_sum = 0;
+                // uint8_t cb_before[8*8];
+                // uint8_t cr_before[8*8];
+                // for (int row = 0; row < 8; row++) {
+                //     for (int col = 0; col < 8; col++) {
+                //         cb_before[row*8+col] = dest[0][row*uvlinesize + col];
+                //     }
+                // }
+                // for (int row = 0; row < 8; row++) {
+                //     for (int col = 0; col < 8; col++) {
+                //         cr_before[row*8+col] = dest[1][row*uvlinesize + col];
+                //     }
+                // }
 
                 h->h264dsp.h264_idct_add8(dest, block_offset,
                                           sl->mb, uvlinesize,
                                           sl->non_zero_count_cache);
                 
-                uint8_t *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
-                uint8_t *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
-                for (int row = 0; row < 8; row++) {
-                    for (int col = 0; col < 8; col++) {
-                        residual_ptr_cb[row*h->width/2 + col] = abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
-                        residual_sum += abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
-                    }
-                }
-                for (int row = 0; row < 8; row++) {
-                    for (int col = 0; col < 8; col++) {
-                        residual_ptr_cr[row*h->width/2 + col] = abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
-                        residual_sum += abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
-                    }
-                }
-                h->residual_sums[sl->mb_xy] += residual_sum;
+                // uint8_t *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                // uint8_t *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                // for (int row = 0; row < 8; row++) {
+                //     for (int col = 0; col < 8; col++) {
+                //         residual_ptr_cb[row*h->width/2 + col] = abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
+                //         residual_sum += abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
+                //     }
+                // }
+                // for (int row = 0; row < 8; row++) {
+                //     for (int col = 0; col < 8; col++) {
+                //         residual_ptr_cr[row*h->width/2 + col] = abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
+                //         residual_sum += abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
+                //     }
+                // }
+                // h->residual_sums[sl->mb_xy] += residual_sum;
             }
         }
     }

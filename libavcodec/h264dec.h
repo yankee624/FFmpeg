@@ -559,13 +559,13 @@ typedef struct H264Context {
     AVBufferPool *ref_index_pool;
     int ref2frm[MAX_SLICES][2][64];     ///< reference to frame number lists, used in the loop filter, the first 2 are for -2,-1
 
-    uint8_t intra_modes[(120+1)*68];
+    // uint8_t intra_modes[(120+1)*68];
     // from: 0b0 (nothing) / 0b1 (top) / 0b10 (top-right) / 0b100 (left)
 
-    uint16_t residual_sums[(120+1)*68];
-    uint8_t residual_y[1920*1080];
-    uint8_t residual_cb[1920/2*1080/2];
-    uint8_t residual_cr[1920/2*1080/2];
+    // uint16_t residual_sums[(120+1)*68];
+    // uint8_t residual_y[1920*1080];
+    // uint8_t residual_cb[1920/2*1080/2];
+    // uint8_t residual_cr[1920/2*1080/2];
 } H264Context;
 
 extern const uint16_t ff_h264_mb_sizes[4];

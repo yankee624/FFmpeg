@@ -2387,6 +2387,7 @@ typedef struct AVCodecContext {
     int (*get_encode_buffer)(struct AVCodecContext *s, AVPacket *pkt, int flags);
 
     const char *vid_id;
+    int do_ec;
 } AVCodecContext;
 
 #if FF_API_CODEC_GET_SET

@@ -935,6 +935,8 @@ void ff_er_frame_end(ERContext *s)
                           (s->avctx->skip_top + s->avctx->skip_bottom)) {
         return;
     }
+    if (!s->avctx->do_ec) return;
+
     linesize = s->cur_pic.f->linesize;
     for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
         int status = s->error_status_table[mb_x + (s->mb_height - 1) * s->mb_stride];

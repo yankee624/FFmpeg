@@ -673,7 +673,7 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                 h->width*8+8, h->width*8+12, h->width*12+8, h->width*12+12};
             for (i = 0; i < 16; i++) {
                 uint8_t *const ptr = dest_y + block_offset[i];
-                uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16] + pixel_offset[i];
+                int *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16] + pixel_offset[i];
                 const int dir      = sl->intra4x4_pred_mode_cache[scan8[i]];
                 // printf("intra4x4 %d\n", dir);
 
@@ -719,10 +719,10 @@ static av_always_inline void hl_decode_mb_predict_luma(H264Context *h,
                         // sometimes reach here
                     }
                     for (int row = 0; row < 4; row++) {
-                        residual_ptr[row*h->width]   = abs(before[row*4] - ptr[row*linesize]);
-                        residual_ptr[row*h->width+1] = abs(before[row*4+1] - ptr[row*linesize+1]);
-                        residual_ptr[row*h->width+2] = abs(before[row*4+2] - ptr[row*linesize+2]);
-                        residual_ptr[row*h->width+3] = abs(before[row*4+3] - ptr[row*linesize+3]);
+                        residual_ptr[row*h->width]   = (int)ptr[row*linesize] -   (int)before[row*4];
+                        residual_ptr[row*h->width+1] = (int)ptr[row*linesize+1] - (int)before[row*4+1];
+                        residual_ptr[row*h->width+2] = (int)ptr[row*linesize+2] - (int)before[row*4+2];
+                        residual_ptr[row*h->width+3] = (int)ptr[row*linesize+3] - (int)before[row*4+3];
 
                         residual_sum += abs(before[row*4] - ptr[row*linesize]);
                         residual_sum += abs(before[row*4+1] - ptr[row*linesize+1]);
@@ -827,10 +827,10 @@ static av_always_inline void hl_decode_mb_idct_luma(H264Context *h, H264SliceCon
             }
         }
 
-        uint8_t *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16];
+        int *residual_ptr = &h->residual_y[sl->mb_y*16*h->width + sl->mb_x*16];
         for (int row = 0; row < 16; row++) {
             for (int col = 0; col < 16; col++) {
-                residual_ptr[row*h->width + col] = abs(before[row*16+col] - dest_y[row*linesize + col]);
+                residual_ptr[row*h->width + col] = (int)dest_y[row*linesize + col] - (int)before[row*16+col];
                 residual_sum += abs(before[row*16+col] - dest_y[row*linesize + col]);
             }
         }

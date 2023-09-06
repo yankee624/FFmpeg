@@ -303,17 +303,17 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h, H264SliceContext *sl)
                                           sl->mb, uvlinesize,
                                           sl->non_zero_count_cache);
                 
-                uint8_t *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
-                uint8_t *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                int *residual_ptr_cb = &h->residual_cb[sl->mb_y*8*h->width/2 + sl->mb_x*8];
+                int *residual_ptr_cr = &h->residual_cr[sl->mb_y*8*h->width/2 + sl->mb_x*8];
                 for (int row = 0; row < 8; row++) {
                     for (int col = 0; col < 8; col++) {
-                        residual_ptr_cb[row*h->width/2 + col] = abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
+                        residual_ptr_cb[row*h->width/2 + col] = (int)dest[0][row*uvlinesize + col] - (int)cb_before[row*8+col];
                         residual_sum += abs(cb_before[row*8+col] - dest[0][row*uvlinesize + col]);
                     }
                 }
                 for (int row = 0; row < 8; row++) {
                     for (int col = 0; col < 8; col++) {
-                        residual_ptr_cr[row*h->width/2 + col] = abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
+                        residual_ptr_cr[row*h->width/2 + col] = (int)dest[1][row*uvlinesize + col] - (int)cr_before[row*8+col];
                         residual_sum += abs(cr_before[row*8+col] - dest[1][row*uvlinesize + col]);
                     }
                 }

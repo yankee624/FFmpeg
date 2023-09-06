@@ -700,9 +700,9 @@ typedef struct AVFrame {
     uint16_t *slice_table;      ///< slice_table_base + 2*mb_stride + 1
 
     uint16_t *residual_sums;
-    uint8_t *residual_y;
-    uint8_t *residual_cb;
-    uint8_t *residual_cr;
+    int *residual_y;
+    int *residual_cb;
+    int *residual_cr;
 
 } AVFrame;
 
